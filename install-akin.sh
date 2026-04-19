@@ -9,18 +9,18 @@ BINARY_IN_ZIP="Akin.Cli"
 INSTALL_DIR="/usr/local/bin"
 
 check_dependencies() {
-    if ! command -v gh &>/dev/null; then
-        echo "Error: GitHub CLI (gh) is required. Install it from https://cli.github.com/" >&2
+    if ! command -v curl &>/dev/null; then
+        echo "Error: curl is required." >&2
         exit 1
     fi
 
-    if ! gh auth status &>/dev/null; then
-        echo "Error: Not authenticated with GitHub CLI. Run 'gh auth login' first." >&2
+    if ! command -v unzip &>/dev/null; then
+        echo "Error: unzip is required." >&2
         exit 1
     fi
 
     if ! command -v sha256sum &>/dev/null && ! command -v shasum &>/dev/null; then
-        echo "Error: Neither sha256sum nor shasum is installed." >&2
+        echo "Error: neither sha256sum nor shasum is installed." >&2
         exit 1
     fi
 }
@@ -65,8 +65,14 @@ detect_asset() {
 }
 
 get_latest_version() {
-    # /releases/latest excludes prereleases and drafts by default.
-    gh api "repos/${REPO}/releases/latest" --jq '.tag_name' | sed 's/^v//'
+    # Query the GitHub API for the latest release tag. /releases/latest excludes
+    # prereleases and drafts by default. Parse the tag_name field without jq so
+    # the script stays dependency-free.
+    curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep -o '"tag_name": *"[^"]*"' \
+        | head -1 \
+        | cut -d'"' -f4 \
+        | sed 's/^v//'
 }
 
 get_installed_version() {
@@ -74,6 +80,15 @@ get_installed_version() {
         "$BINARY_NAME" --version 2>/dev/null || echo ""
     else
         echo ""
+    fi
+}
+
+download() {
+    local url="$1"
+    local dest="$2"
+    if ! curl -fsSL -o "$dest" "$url"; then
+        echo "Failed to download $url" >&2
+        return 1
     fi
 }
 
@@ -110,8 +125,11 @@ main() {
     TMP_DIR="$(mktemp -d)"
     trap 'rm -rf "$TMP_DIR"' EXIT
 
-    echo "Downloading akin v${version} and its checksum..."
-    gh release download "v${version}" -R "$REPO" -p "$asset" -p "${asset}.sha256" -D "$TMP_DIR"
+    local base_url="https://github.com/${REPO}/releases/download/v${version}"
+
+    echo "Downloading akin v${version}..."
+    download "${base_url}/${asset}" "${TMP_DIR}/${asset}"
+    download "${base_url}/${asset}.sha256" "${TMP_DIR}/${asset}.sha256"
 
     echo "Verifying checksum..."
     local expected_sum

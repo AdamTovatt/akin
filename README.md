@@ -16,7 +16,7 @@ Built on the [VectorSharp](https://github.com/AdamTovatt/vector-sharp) libraries
 curl -fsSL https://raw.githubusercontent.com/AdamTovatt/akin/master/install-akin.sh | bash
 ```
 
-This detects your platform, downloads the latest release, and installs the `akin` binary to `/usr/local/bin`. Requires the [GitHub CLI](https://cli.github.com/) (`gh`) to be installed and authenticated. Run the same command again to update.
+This detects your platform, downloads the latest release, verifies its SHA256 checksum, and installs the `akin` binary to `/usr/local/bin`. Requires only `curl`, `unzip`, and `sha256sum`/`shasum` — all standard on macOS and Linux. Run the same command again to update.
 
 ### Updaemon (Linux)
 
