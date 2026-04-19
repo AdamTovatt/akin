@@ -64,7 +64,14 @@ namespace Akin.Core.Services
             {
                 string indexFolder = Path.Combine(repoRoot, IndexFolderName);
 
-                embedder = new EmbeddingService(() => NomicEmbedProvider.Create());
+                // Resolve the Models folder via AppContext.BaseDirectory rather than
+                // Assembly.Location. In single-file self-contained publishes
+                // Assembly.Location returns an empty string, so the default
+                // NomicEmbedProvider.Create() cannot find its model files. BaseDirectory
+                // correctly points to the executable directory for single-file builds
+                // and to the tool's bin folder for `dotnet tool install` deployments.
+                string modelsDir = Path.Combine(AppContext.BaseDirectory, "Models");
+                embedder = new EmbeddingService(() => NomicEmbedProvider.Create(modelsDir));
                 IChunkerSelector chunkerSelector = new ChunkerSelector();
                 IRepoScanner scanner = new RepoScanner(repoRoot);
                 store = new IndexStore(indexFolder, embedder.Dimension);
