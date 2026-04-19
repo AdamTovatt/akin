@@ -14,15 +14,17 @@ namespace Akin.Core.Commands
     public sealed class SearchCommand : ICommand
     {
         private readonly ISearchService _searchService;
-        private readonly Func<CancellationToken, Task> _ensureReady;
+        private readonly Func<IProgress<IndexProgress>?, CancellationToken, Task> _ensureReady;
         private readonly string _query;
         private readonly SearchOptions _options;
+        private readonly IProgress<IndexProgress>? _progress;
 
         public SearchCommand(
             ISearchService searchService,
-            Func<CancellationToken, Task> ensureReady,
+            Func<IProgress<IndexProgress>?, CancellationToken, Task> ensureReady,
             string query,
-            SearchOptions options)
+            SearchOptions options,
+            IProgress<IndexProgress>? progress = null)
         {
             ArgumentNullException.ThrowIfNull(searchService);
             ArgumentNullException.ThrowIfNull(ensureReady);
@@ -33,11 +35,12 @@ namespace Akin.Core.Commands
             _ensureReady = ensureReady;
             _query = query;
             _options = options;
+            _progress = progress;
         }
 
         public async Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
         {
-            await _ensureReady(cancellationToken);
+            await _ensureReady(_progress, cancellationToken);
 
             IReadOnlyList<SearchHit> hits = await _searchService.SearchAsync(_query, _options, cancellationToken);
 

@@ -42,12 +42,22 @@ namespace Akin.Cli
 
             try
             {
-                ICommandFactory factory = new CommandFactory(context);
-
                 if (isMcpMode)
-                    return await RunMcpServerAsync(context, factory, args);
+                {
+                    // MCP: no progress printer — a long-running background index
+                    // shouldn't spam the MCP host's stderr log.
+                    ICommandFactory mcpFactory = new CommandFactory(context);
+                    return await RunMcpServerAsync(context, mcpFactory, args);
+                }
 
-                return await RunCliAsync(factory, args);
+                // CLI: print progress to stderr so reindex and initial-build-triggered
+                // searches don't look frozen. Suppress the live overwrite behaviour
+                // when stderr is redirected (pipes, log files).
+                ConsoleProgressPrinter? printer = Console.IsErrorRedirected ? null : new ConsoleProgressPrinter();
+                ICommandFactory factory = new CommandFactory(context, printer);
+                int exitCode = await RunCliAsync(factory, args);
+                printer?.Finish();
+                return exitCode;
             }
             finally
             {
@@ -90,8 +100,12 @@ namespace Akin.Cli
         {
             try
             {
-                await context.EnsureIndexReadyAsync();
-
+                // Do not block here on EnsureIndexReadyAsync — for a large repo that
+                // is a minute or more of work, which blocks the MCP stdio handshake
+                // long enough that the client times out and kills the process. The
+                // IndexBackgroundService handles initial indexing in the background
+                // after the MCP host starts, so searches arriving before the index
+                // is built just return empty results until it's ready.
                 HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
                 builder.Logging.ClearProviders();
                 builder.Logging.AddConsole(options =>

@@ -30,8 +30,10 @@ namespace Akin.Core.Services
             _indexer = indexer;
         }
 
-        public async Task<ReconciliationResult> ReconcileAsync(CancellationToken cancellationToken = default)
+        public async Task<ReconciliationResult> ReconcileAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
         {
+            progress?.Report(new IndexProgress { Phase = "scanning" });
+
             IReadOnlyList<string> tracked = await _scanner.ScanAsync(cancellationToken);
             HashSet<string> trackedSet = new HashSet<string>(tracked, StringComparer.Ordinal);
 
@@ -52,11 +54,11 @@ namespace Akin.Core.Services
                 }
             }
 
-            // Pass 2: reindex files that are new or whose fingerprints have changed.
+            // First pass to count how much actual work is pending so we can give
+            // the caller a denominator before we start reindexing.
+            List<string> toReindex = new List<string>();
             foreach (string relativePath in tracked)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
                 FileFingerprint? stored = _store.GetFingerprint(relativePath);
                 string absolutePath = Path.Combine(_repoRoot, relativePath);
                 if (!File.Exists(absolutePath))
@@ -70,10 +72,31 @@ namespace Akin.Core.Services
                 }
 
                 FileInfo info = new FileInfo(absolutePath);
-                if (stored != null && stored.MatchesCurrentFile(info))
-                    continue;
+                if (stored != null && stored.MatchesCurrentFile(info)) continue;
 
-                await _indexer.ReindexFileAsync(relativePath, cancellationToken);
+                toReindex.Add(relativePath);
+            }
+
+            progress?.Report(new IndexProgress
+            {
+                Phase = "indexing",
+                FilesDone = 0,
+                FilesTotal = toReindex.Count,
+            });
+
+            for (int i = 0; i < toReindex.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                progress?.Report(new IndexProgress
+                {
+                    Phase = "indexing",
+                    CurrentFile = toReindex[i],
+                    FilesDone = i,
+                    FilesTotal = toReindex.Count,
+                });
+
+                await _indexer.ReindexFileAsync(toReindex[i], cancellationToken);
                 reindexed++;
             }
 

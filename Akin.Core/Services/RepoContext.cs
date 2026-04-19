@@ -123,15 +123,15 @@ namespace Akin.Core.Services
         /// reconciliation brings the index up to date with whatever changed since
         /// the last run.
         /// </summary>
-        public async Task EnsureIndexReadyAsync(CancellationToken cancellationToken = default)
+        public async Task EnsureIndexReadyAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
         {
             if (!Store.IsReady || !IsIndexCompatible())
             {
-                await Indexer.ReindexAllAsync(cancellationToken);
+                await Indexer.ReindexAllAsync(progress, cancellationToken);
                 return;
             }
 
-            await Reconciler.ReconcileAsync(cancellationToken);
+            await Reconciler.ReconcileAsync(progress, cancellationToken);
         }
 
         public async ValueTask DisposeAsync()

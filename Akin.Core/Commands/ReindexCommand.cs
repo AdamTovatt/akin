@@ -12,20 +12,22 @@ namespace Akin.Core.Commands
     {
         private readonly IIndexer _indexer;
         private readonly IIndexStore _store;
+        private readonly IProgress<IndexProgress>? _progress;
 
-        public ReindexCommand(IIndexer indexer, IIndexStore store)
+        public ReindexCommand(IIndexer indexer, IIndexStore store, IProgress<IndexProgress>? progress = null)
         {
             ArgumentNullException.ThrowIfNull(indexer);
             ArgumentNullException.ThrowIfNull(store);
 
             _indexer = indexer;
             _store = store;
+            _progress = progress;
         }
 
         public async Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
         {
             Stopwatch sw = Stopwatch.StartNew();
-            await _indexer.ReindexAllAsync(cancellationToken);
+            await _indexer.ReindexAllAsync(_progress, cancellationToken);
             sw.Stop();
 
             IndexStatus status = _store.GetStatus();

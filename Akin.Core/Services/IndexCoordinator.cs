@@ -263,7 +263,7 @@ namespace Akin.Core.Services
         {
             // Delegate to the shared reconciler which handles new files, deleted files,
             // and files whose fingerprint has changed — catching anything the watcher missed.
-            await _context.Reconciler.ReconcileAsync(cancellationToken);
+            await _context.Reconciler.ReconcileAsync(progress: null, cancellationToken);
             await RefreshTrackedSetAsync(cancellationToken);
         }
     }

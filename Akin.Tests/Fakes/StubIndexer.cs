@@ -1,4 +1,5 @@
 using Akin.Core.Interfaces;
+using Akin.Core.Models;
 
 namespace Akin.Tests.Fakes
 {
@@ -11,7 +12,7 @@ namespace Akin.Tests.Fakes
         public List<string> ReindexedFiles { get; } = new List<string>();
         public int FullReindexes { get; private set; }
 
-        public Task ReindexAllAsync(CancellationToken cancellationToken = default)
+        public Task ReindexAllAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
         {
             FullReindexes++;
             return Task.CompletedTask;

@@ -42,16 +42,36 @@ namespace Akin.Core.Services
             _embeddingModelId = embeddingModelId;
         }
 
-        public async Task ReindexAllAsync(CancellationToken cancellationToken = default)
+        public async Task ReindexAllAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
         {
+            progress?.Report(new IndexProgress { Phase = "scanning" });
+
             IReadOnlyList<string> files = await _scanner.ScanAsync(cancellationToken);
+
+            progress?.Report(new IndexProgress
+            {
+                Phase = "indexing",
+                FilesDone = 0,
+                FilesTotal = files.Count,
+            });
 
             List<(ChunkDraft Draft, float[] Embedding)> allChunks = new List<(ChunkDraft, float[])>();
             List<FileFingerprint> fingerprints = new List<FileFingerprint>();
 
-            foreach (string relativePath in files)
+            for (int i = 0; i < files.Count; i++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                string relativePath = files[i];
+
+                progress?.Report(new IndexProgress
+                {
+                    Phase = "indexing",
+                    CurrentFile = relativePath,
+                    FilesDone = i,
+                    FilesTotal = files.Count,
+                    ChunksDone = allChunks.Count,
+                });
 
                 PreparedFile? prepared = await _fileChunker.PrepareAsync(relativePath, cancellationToken);
                 if (prepared == null) continue;
@@ -62,11 +82,19 @@ namespace Akin.Core.Services
                 IReadOnlyList<string> texts = prepared.Chunks.Select(c => c.Text).ToList();
                 float[][] embeddings = await _embedder.EmbedBatchAsync(texts, EmbeddingPurpose.Document, cancellationToken);
 
-                for (int i = 0; i < prepared.Chunks.Count; i++)
+                for (int k = 0; k < prepared.Chunks.Count; k++)
                 {
-                    allChunks.Add((prepared.Chunks[i], embeddings[i]));
+                    allChunks.Add((prepared.Chunks[k], embeddings[k]));
                 }
             }
+
+            progress?.Report(new IndexProgress
+            {
+                Phase = "persisting",
+                FilesDone = files.Count,
+                FilesTotal = files.Count,
+                ChunksDone = allChunks.Count,
+            });
 
             Manifest manifest = new Manifest
             {

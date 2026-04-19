@@ -4,28 +4,47 @@ using Microsoft.Extensions.Hosting;
 namespace Akin.Cli
 {
     /// <summary>
-    /// Hosts an <see cref="IndexCoordinator"/> for the lifetime of the MCP server,
-    /// so incremental reindexing happens in the background while the server handles
-    /// search requests.
+    /// Hosts an <see cref="IndexCoordinator"/> and an initial ensure-ready pass
+    /// for the lifetime of the MCP server. <see cref="StartAsync"/> returns
+    /// immediately — the coordinator is started and the initial reindex runs in
+    /// a detached task — so the MCP stdio handshake is not blocked by index
+    /// construction. Searches arriving before the index is ready just get
+    /// empty results until the background pass completes.
     /// </summary>
     internal sealed class IndexBackgroundService : IHostedService, IAsyncDisposable
     {
         private readonly RepoContext _context;
+        private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+
         private IndexCoordinator? _coordinator;
+        private Task? _bootstrapTask;
 
         public IndexBackgroundService(RepoContext context)
         {
             _context = context;
         }
 
-        public async Task StartAsync(CancellationToken cancellationToken)
+        public Task StartAsync(CancellationToken cancellationToken)
         {
-            _coordinator = await IndexCoordinator.StartAsync(_context, cancellationToken);
+            _bootstrapTask = Task.Run(() => BootstrapAsync(_cts.Token));
+            return Task.CompletedTask;
         }
 
-        public Task StopAsync(CancellationToken cancellationToken)
+        public async Task StopAsync(CancellationToken cancellationToken)
         {
-            return DisposeAsync().AsTask();
+            await _cts.CancelAsync();
+
+            if (_bootstrapTask != null)
+            {
+                try { await _bootstrapTask; }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[akin] bootstrap task ended with error: {ex.Message}");
+                }
+            }
+
+            await DisposeAsync();
         }
 
         public async ValueTask DisposeAsync()
@@ -34,6 +53,27 @@ namespace Akin.Cli
             {
                 await _coordinator.DisposeAsync();
                 _coordinator = null;
+            }
+            _cts.Dispose();
+        }
+
+        private async Task BootstrapAsync(CancellationToken cancellationToken)
+        {
+            // Start the file watcher first so any changes during the initial
+            // reindex pass are captured and replayed after.
+            _coordinator = await IndexCoordinator.StartAsync(_context, cancellationToken);
+
+            try
+            {
+                await _context.EnsureIndexReadyAsync(progress: null, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Shutdown.
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[akin] initial index build failed: {ex.Message}");
             }
         }
     }

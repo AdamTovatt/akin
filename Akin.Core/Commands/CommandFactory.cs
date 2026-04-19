@@ -8,15 +8,20 @@ namespace Akin.Core.Commands
     /// <summary>
     /// Default <see cref="ICommandFactory"/> backed by a <see cref="RepoContext"/>.
     /// Commands are constructed with the minimum set of services they need.
+    /// Takes an optional <see cref="IProgress{T}"/> reporter that's threaded into
+    /// commands whose work can report progress (search, reindex); the CLI wires
+    /// up a console printer, the MCP path leaves it null.
     /// </summary>
     public sealed class CommandFactory : ICommandFactory
     {
         private readonly RepoContext _context;
+        private readonly IProgress<IndexProgress>? _progress;
 
-        public CommandFactory(RepoContext context)
+        public CommandFactory(RepoContext context, IProgress<IndexProgress>? progress = null)
         {
             ArgumentNullException.ThrowIfNull(context);
             _context = context;
+            _progress = progress;
         }
 
         public ICommand CreateFromArgs(string[] args)
@@ -37,7 +42,7 @@ namespace Akin.Core.Commands
 
         public ICommand CreateSearch(string query, SearchOptions options)
         {
-            return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options);
+            return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options, _progress);
         }
 
         public ICommand CreateStatus()
@@ -47,7 +52,7 @@ namespace Akin.Core.Commands
 
         public ICommand CreateReindex()
         {
-            return new ReindexCommand(_context.Indexer, _context.Store);
+            return new ReindexCommand(_context.Indexer, _context.Store, _progress);
         }
 
         private SearchCommand BuildSearchFromArgs(string[] args)
@@ -98,7 +103,7 @@ namespace Akin.Core.Commands
                 IncludeSnippets = includeSnippets,
                 MinimumScore = minScore,
             };
-            return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options);
+            return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options, _progress);
         }
     }
 }
