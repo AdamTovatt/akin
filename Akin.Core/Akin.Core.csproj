@@ -8,8 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="VectorSharp.Storage" Version="1.1.0" />
-    <PackageReference Include="VectorSharp.Embedding" Version="1.0.2" />
-    <PackageReference Include="VectorSharp.Embedding.NomicEmbed" Version="1.0.2" />
+    <PackageReference Include="VectorSharp.Embedding" Version="1.0.3" />
+    <PackageReference Include="VectorSharp.Embedding.NomicEmbed" Version="1.0.3" />
     <PackageReference Include="VectorSharp.Chunking" Version="1.0.0" />
   </ItemGroup>
 
