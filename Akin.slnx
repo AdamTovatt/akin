@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Akin.Cli/Akin.Cli.csproj" />
+  <Project Path="Akin.Core/Akin.Core.csproj" />
+  <Project Path="Akin.Tests/Akin.Tests.csproj" />
+</Solution>

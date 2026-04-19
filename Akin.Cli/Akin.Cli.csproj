@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Akin.Core\Akin.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
+    <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>akin</ToolCommandName>
+    <PackageOutputPath>./bin/nupkg</PackageOutputPath>
+    <PackageId>Akin</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Adam Tovatt</Authors>
+    <Description>Semantic code search tool for AI agents and CLI users. Works as both a CLI tool and MCP server. Uses local ONNX embeddings — no API keys, no external services.</Description>
+    <PackageTags>mcp;semantic-search;code-search;cli-tool;mcp-server;claude-code;embeddings</PackageTags>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Akin</Title>
+    <Product>Akin</Product>
+    <Copyright>MIT</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/AdamTovatt/akin</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/AdamTovatt/akin</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+</Project>

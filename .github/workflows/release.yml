@@ -1,0 +1,125 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  platform-binaries:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    strategy:
+      matrix:
+        include:
+          - rid: win-x64
+            artifact: akin-win-x64.zip
+          - rid: osx-x64
+            artifact: akin-osx-x64.zip
+          - rid: osx-arm64
+            artifact: akin-osx-arm64.zip
+          - rid: linux-x64
+            artifact: akin-linux-x64.zip
+          - rid: linux-arm64
+            artifact: akin-linux-arm64.zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Publish
+        run: |
+          dotnet publish Akin.Cli/Akin.Cli.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version=${{ steps.version.outputs.VERSION }} \
+            -o ./publish/${{ matrix.rid }}
+
+      - name: Create archive and checksum
+        run: |
+          cd publish/${{ matrix.rid }}
+          zip -r ../../${{ matrix.artifact }} .
+          cd ../..
+          sha256sum ${{ matrix.artifact }} > ${{ matrix.artifact }}.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.sha256
+
+  nuget:
+    needs: platform-binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release -p:Version=${{ steps.version.outputs.VERSION }}
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack
+        run: dotnet pack Akin.Cli/Akin.Cli.csproj --no-build --configuration Release -p:Version=${{ steps.version.outputs.VERSION }} --output ./nupkgs
+
+      - name: Publish to NuGet
+        run: dotnet nuget push ./nupkgs/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ secrets.NUGET_API_KEY }} --skip-duplicate
+
+  release:
+    needs: [nuget, platform-binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            akin-win-x64.zip/akin-win-x64.zip
+            akin-win-x64.zip/akin-win-x64.zip.sha256
+            akin-osx-x64.zip/akin-osx-x64.zip
+            akin-osx-x64.zip/akin-osx-x64.zip.sha256
+            akin-osx-arm64.zip/akin-osx-arm64.zip
+            akin-osx-arm64.zip/akin-osx-arm64.zip.sha256
+            akin-linux-x64.zip/akin-linux-x64.zip
+            akin-linux-x64.zip/akin-linux-x64.zip.sha256
+            akin-linux-arm64.zip/akin-linux-arm64.zip
+            akin-linux-arm64.zip/akin-linux-arm64.zip.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

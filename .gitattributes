@@ -1,0 +1,11 @@
+# Ensure shell scripts always use LF line endings, even on Windows clones.
+*.sh text eol=lf
+
+# Treat these as text with platform-appropriate endings.
+*.cs text
+*.csproj text
+*.slnx text
+*.md text
+*.json text
+*.yml text
+*.yaml text
