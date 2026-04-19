@@ -13,8 +13,13 @@ namespace Akin.Core.Services
     /// </summary>
     public sealed class FileChunker
     {
-        private const long DefaultMaxFileSizeBytes = 2 * 1024 * 1024; // 2MB
-        private const int BinaryDetectionBytes = 8192;
+        private const long DefaultMaxFileSizeBytes = 1 * 1024 * 1024; // 1MB
+        // Scan up to this many bytes of the file for null bytes. Many binary
+        // formats (PDF, Adobe Illustrator, some archives) start with an ASCII
+        // header and only reveal their binary payload later, so scanning only
+        // the first few KB lets them slip through. 256KB is cheap to read and
+        // catches the common offenders without hurting real text files.
+        private const int BinaryDetectionBytes = 256 * 1024;
 
         private readonly string _repoRoot;
         private readonly IChunkerSelector _selector;
@@ -48,13 +53,39 @@ namespace Akin.Core.Services
             FileInfo info = new FileInfo(absolutePath);
             FileFingerprint fingerprint = FileFingerprint.FromFile(relativePath, info);
 
+            // Check the chunker allowlist first — it's a fast dictionary lookup,
+            // and if the extension is unknown we can skip the expensive binary
+            // scan and chunking work entirely.
+            ChunkerConfig? config = _selector.SelectFor(relativePath);
+            if (config == null)
+            {
+                // File isn't chunkable, but if its extension is on the
+                // filename-only allowlist (images, PDFs, design files) we
+                // still emit a single synthetic chunk so the file is
+                // searchable by name.
+                if (_selector.ShouldIndexByFilename(relativePath))
+                {
+                    return new PreparedFile(fingerprint, new List<ChunkDraft>
+                    {
+                        new ChunkDraft
+                        {
+                            RelativePath = relativePath,
+                            StartLine = 1,
+                            EndLine = 1,
+                            Text = $"[asset: {relativePath}]",
+                            EmbeddingText = relativePath,
+                        },
+                    });
+                }
+
+                return new PreparedFile(fingerprint, Array.Empty<ChunkDraft>());
+            }
+
             if (info.Length > _maxFileSizeBytes)
                 return new PreparedFile(fingerprint, Array.Empty<ChunkDraft>());
 
             if (await IsBinaryAsync(absolutePath, cancellationToken))
                 return new PreparedFile(fingerprint, Array.Empty<ChunkDraft>());
-
-            ChunkerConfig config = _selector.SelectFor(relativePath);
 
             List<ChunkDraft> drafts = new List<ChunkDraft>();
 

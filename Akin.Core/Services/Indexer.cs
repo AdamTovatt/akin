@@ -109,7 +109,7 @@ namespace Akin.Core.Services
                     }
                     else
                     {
-                        IReadOnlyList<string> texts = prepared.Chunks.Select(c => c.Text).ToList();
+                        IReadOnlyList<string> texts = prepared.Chunks.Select(BuildEmbeddingText).ToList();
                         float[][] embeddings = await _embedder.EmbedBatchAsync(texts, EmbeddingPurpose.Document, cancellationToken);
 
                         List<(ChunkDraft, float[])> paired = new List<(ChunkDraft, float[])>(prepared.Chunks.Count);
@@ -170,7 +170,7 @@ namespace Akin.Core.Services
                 return;
             }
 
-            IReadOnlyList<string> texts = prepared.Chunks.Select(c => c.Text).ToList();
+            IReadOnlyList<string> texts = prepared.Chunks.Select(BuildEmbeddingText).ToList();
             float[][] embeddings = await _embedder.EmbedBatchAsync(texts, EmbeddingPurpose.Document, cancellationToken);
 
             List<(ChunkDraft, float[])> paired = new List<(ChunkDraft, float[])>(prepared.Chunks.Count);
@@ -180,6 +180,19 @@ namespace Akin.Core.Services
             }
 
             await _store.ReplaceFileAsync(relativePath, paired, prepared.Fingerprint, cancellationToken);
+        }
+
+        /// <summary>
+        /// Builds the text the embedder actually sees for a chunk. File-content
+        /// chunks get their path prepended so filename context contributes to
+        /// ranking even when a query's terms only appear in the path. Asset
+        /// chunks supply their own <see cref="ChunkDraft.EmbeddingText"/> (just
+        /// the path) so the embedding focuses on the filename rather than the
+        /// display wrapper around it.
+        /// </summary>
+        private static string BuildEmbeddingText(ChunkDraft chunk)
+        {
+            return chunk.EmbeddingText ?? $"{chunk.RelativePath}\n\n{chunk.Text}";
         }
     }
 }

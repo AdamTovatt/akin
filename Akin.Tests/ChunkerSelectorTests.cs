@@ -25,26 +25,97 @@ namespace Akin.Tests
         [InlineData("types.pyi", "python")]
         public void SelectFor_KnownExtension_ReturnsExpectedFormat(string relativePath, string expectedFormat)
         {
-            ChunkerConfig config = _selector.SelectFor(relativePath);
+            ChunkerConfig? config = _selector.SelectFor(relativePath);
+            Assert.NotNull(config);
             Assert.Equal(expectedFormat, config.FormatName);
         }
 
         [Theory]
-        [InlineData("something.unknown")]
-        [InlineData("justafile")]
         [InlineData("data.json")]
-        public void SelectFor_UnknownOrNoExtension_ReturnsPlainTextFallback(string relativePath)
+        [InlineData("config.yaml")]
+        [InlineData("notes.txt")]
+        [InlineData("script.sh")]
+        [InlineData("main.go")]
+        [InlineData("lib.rs")]
+        [InlineData("project.csproj")]
+        public void SelectFor_KnownTextExtension_ReturnsPlainText(string relativePath)
         {
-            ChunkerConfig config = _selector.SelectFor(relativePath);
+            ChunkerConfig? config = _selector.SelectFor(relativePath);
+            Assert.NotNull(config);
             Assert.Equal("plaintext", config.FormatName);
         }
 
-        [Fact]
-        public void SelectFor_IsCaseInsensitive()
+        [Theory]
+        [InlineData("Dockerfile")]
+        [InlineData("Makefile")]
+        [InlineData("LICENSE")]
+        [InlineData("README")]
+        [InlineData("Gemfile")]
+        public void SelectFor_WellKnownExtensionlessFilename_ReturnsPlainText(string relativePath)
         {
-            ChunkerConfig upper = _selector.SelectFor("File.CS");
-            ChunkerConfig lower = _selector.SelectFor("file.cs");
+            ChunkerConfig? config = _selector.SelectFor(relativePath);
+            Assert.NotNull(config);
+            Assert.Equal("plaintext", config.FormatName);
+        }
+
+        [Theory]
+        [InlineData("logo.ai")]
+        [InlineData("diagram.pdf")]
+        [InlineData("image.png")]
+        [InlineData("favicon.ico")]
+        [InlineData("archive.zip")]
+        [InlineData("binary.bin")]
+        [InlineData("random_file_no_extension")]
+        [InlineData("data.csv")]
+        [InlineData("output.log")]
+        public void SelectFor_UnknownOrKnownBinaryExtension_ReturnsNull(string relativePath)
+        {
+            ChunkerConfig? config = _selector.SelectFor(relativePath);
+            Assert.Null(config);
+        }
+
+        [Theory]
+        [InlineData("Art/Logo.ai")]
+        [InlineData("icons/home.svg")]
+        [InlineData("favicon.ico")]
+        [InlineData("public/hero.png")]
+        [InlineData("img/photo.jpeg")]
+        [InlineData("docs/whitepaper.pdf")]
+        [InlineData("fonts/Inter.woff2")]
+        public void ShouldIndexByFilename_AssetExtensions_ReturnsTrue(string relativePath)
+        {
+            Assert.True(_selector.ShouldIndexByFilename(relativePath));
+        }
+
+        [Theory]
+        [InlineData("main.cs")]
+        [InlineData("README.md")]
+        [InlineData("notes.txt")]
+        [InlineData("data.csv")]
+        [InlineData("Dockerfile")]
+        public void ShouldIndexByFilename_TextFiles_ReturnsFalse(string relativePath)
+        {
+            Assert.False(_selector.ShouldIndexByFilename(relativePath));
+        }
+
+        [Fact]
+        public void SelectFor_IsCaseInsensitiveOnExtension()
+        {
+            ChunkerConfig? upper = _selector.SelectFor("File.CS");
+            ChunkerConfig? lower = _selector.SelectFor("file.cs");
+            Assert.NotNull(upper);
+            Assert.NotNull(lower);
             Assert.Equal(upper.FormatName, lower.FormatName);
+        }
+
+        [Fact]
+        public void SelectFor_IsCaseInsensitiveOnFilename()
+        {
+            ChunkerConfig? upper = _selector.SelectFor("DOCKERFILE");
+            ChunkerConfig? mixed = _selector.SelectFor("Dockerfile");
+            Assert.NotNull(upper);
+            Assert.NotNull(mixed);
+            Assert.Equal(upper.FormatName, mixed.FormatName);
         }
 
         [Fact]

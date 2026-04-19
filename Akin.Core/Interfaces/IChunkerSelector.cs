@@ -9,11 +9,19 @@ namespace Akin.Core.Interfaces
     public interface IChunkerSelector
     {
         /// <summary>
-        /// Returns the chunker configuration to use when processing <paramref name="relativePath"/>.
-        /// Always returns a configuration; unknown or extensionless files fall back to a
-        /// generic plain-text format.
+        /// Returns the chunker configuration to use when processing <paramref name="relativePath"/>,
+        /// or null when the file is not a chunkable text file. A null return does not
+        /// necessarily mean the file is skipped outright — see <see cref="ShouldIndexByFilename"/>.
         /// </summary>
-        ChunkerConfig SelectFor(string relativePath);
+        ChunkerConfig? SelectFor(string relativePath);
+
+        /// <summary>
+        /// Returns true for files that can't be meaningfully chunked but whose
+        /// filename should still be indexed — images, PDFs, design documents.
+        /// The caller emits a single synthetic chunk for these so queries like
+        /// "app icon" or "logo" can surface the file by name.
+        /// </summary>
+        bool ShouldIndexByFilename(string relativePath);
 
         /// <summary>
         /// A stable fingerprint over all configurations this selector can produce, used

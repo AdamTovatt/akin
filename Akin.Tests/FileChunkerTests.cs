@@ -45,13 +45,51 @@ namespace Akin.Tests
         }
 
         [Fact]
-        public async Task PrepareAsync_BinaryFile_IsSkipped()
+        public async Task PrepareAsync_BinaryContentInAllowlistedExtension_IsSkipped()
         {
-            // Null byte in the first 8KB marks the file as binary.
-            string absolute = Path.Combine(_tempRoot, "blob.bin");
-            File.WriteAllBytes(absolute, new byte[] { 0x00, 0xFF, 0x42, 0x13 });
+            // A file with a text-file extension but null bytes in the content
+            // should be skipped by the binary detector, not chunked as text.
+            string absolute = Path.Combine(_tempRoot, "poisoned.txt");
+            byte[] content = System.Text.Encoding.UTF8.GetBytes("Some leading ASCII\n");
+            byte[] payload = new byte[content.Length + 4];
+            content.CopyTo(payload, 0);
+            payload[content.Length] = 0x00;
+            payload[content.Length + 1] = 0xFF;
+            payload[content.Length + 2] = 0x42;
+            payload[content.Length + 3] = 0x13;
+            File.WriteAllBytes(absolute, payload);
 
-            PreparedFile? result = await _chunker.PrepareAsync("blob.bin");
+            PreparedFile? result = await _chunker.PrepareAsync("poisoned.txt");
+            Assert.NotNull(result);
+            Assert.Empty(result.Chunks);
+        }
+
+        [Fact]
+        public async Task PrepareAsync_AssetExtension_EmitsFilenameOnlyChunk()
+        {
+            // .ai is on the filename-only allowlist. The content isn't chunked,
+            // but we still emit one synthetic chunk so the file can be found by
+            // name through semantic search.
+            WriteFile("Art/Logo.ai", "%PDF-1.6\nbinary payload that we don't index");
+
+            PreparedFile? result = await _chunker.PrepareAsync("Art/Logo.ai");
+
+            Assert.NotNull(result);
+            Assert.Single(result.Chunks);
+
+            ChunkDraft only = result.Chunks[0];
+            Assert.Equal("Art/Logo.ai", only.RelativePath);
+            Assert.Equal(1, only.StartLine);
+            Assert.Equal(1, only.EndLine);
+            Assert.Contains("Art/Logo.ai", only.Text);
+            Assert.Equal("Art/Logo.ai", only.EmbeddingText);
+        }
+
+        [Fact]
+        public async Task PrepareAsync_TrulyUnknownExtension_ReturnsNoChunks()
+        {
+            WriteFile("data.mystery", "contents that we don't understand");
+            PreparedFile? result = await _chunker.PrepareAsync("data.mystery");
             Assert.NotNull(result);
             Assert.Empty(result.Chunks);
         }
