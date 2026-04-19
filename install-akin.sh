@@ -3,12 +3,9 @@ set -euo pipefail
 
 REPO="AdamTovatt/akin"
 BINARY_NAME="akin"
-# The self-contained single-file publish produces an executable named after
-# the CLI project. Keep this in sync with the project name if it's ever renamed.
+# Name of the executable inside the release zip. Keep in sync with the CLI
+# project name.
 BINARY_IN_ZIP="Akin.Cli"
-# The binary needs its Models/ sidecar directory at runtime, so we install the
-# whole extracted layout here and symlink the binary into INSTALL_DIR.
-LIB_DIR="/usr/local/lib/akin"
 INSTALL_DIR="/usr/local/bin"
 
 check_dependencies() {
@@ -92,52 +89,17 @@ download() {
     fi
 }
 
-privileged_run() {
-    if [ -w "$(dirname "$1")" ] 2>/dev/null || [ "$(id -u)" = "0" ]; then
-        "$@"
-    else
-        sudo "$@"
-    fi
-}
-
-install_files() {
-    local staging="$1"
-
-    # Remove any previous install of the lib directory so stale files (old
-    # model versions, old native libs) don't linger. Recreate empty.
-    if [ -d "$LIB_DIR" ]; then
-        if [ -w "$(dirname "$LIB_DIR")" ]; then
-            rm -rf "$LIB_DIR"
-        else
-            sudo rm -rf "$LIB_DIR"
-        fi
-    fi
-
-    if [ -w "$(dirname "$LIB_DIR")" ]; then
-        mkdir -p "$LIB_DIR"
-        cp -R "$staging"/. "$LIB_DIR"/
-        chmod +x "$LIB_DIR/$BINARY_IN_ZIP"
-    else
-        sudo mkdir -p "$LIB_DIR"
-        sudo cp -R "$staging"/. "$LIB_DIR"/
-        sudo chmod +x "$LIB_DIR/$BINARY_IN_ZIP"
-    fi
-
-    local link_target="$LIB_DIR/$BINARY_IN_ZIP"
-    local link_path="$INSTALL_DIR/$BINARY_NAME"
-
-    # Replace any existing binary or symlink at the install path.
-    if [ -w "$INSTALL_DIR" ]; then
-        rm -f "$link_path"
-        ln -s "$link_target" "$link_path"
-    else
-        sudo rm -f "$link_path"
-        sudo ln -s "$link_target" "$link_path"
-    fi
-}
-
 main() {
     check_dependencies
+
+    # Clean up any prior install that used the old /usr/local/lib/akin layout.
+    if [ -d /usr/local/lib/akin ]; then
+        if [ -w /usr/local/lib ]; then
+            rm -rf /usr/local/lib/akin
+        else
+            sudo rm -rf /usr/local/lib/akin
+        fi
+    fi
 
     echo "Detecting platform..."
     local asset
@@ -184,13 +146,30 @@ main() {
     echo "Extracting..."
     unzip -qo "${TMP_DIR}/${asset}" -d "${TMP_DIR}/extracted"
 
-    if [ ! -f "${TMP_DIR}/extracted/${BINARY_IN_ZIP}" ]; then
+    local binary_path="${TMP_DIR}/extracted/${BINARY_IN_ZIP}"
+    if [ ! -f "$binary_path" ]; then
         echo "Binary '${BINARY_IN_ZIP}' not found in archive." >&2
         exit 1
     fi
 
-    echo "Installing to ${LIB_DIR} and linking ${INSTALL_DIR}/${BINARY_NAME}..."
-    install_files "${TMP_DIR}/extracted"
+    chmod +x "$binary_path"
+
+    echo "Installing to ${INSTALL_DIR}/${BINARY_NAME}..."
+    # Remove any existing symlink from older installs before placing the
+    # real file.
+    if [ -L "${INSTALL_DIR}/${BINARY_NAME}" ]; then
+        if [ -w "$INSTALL_DIR" ]; then
+            rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+        else
+            sudo rm -f "${INSTALL_DIR}/${BINARY_NAME}"
+        fi
+    fi
+
+    if [ -w "$INSTALL_DIR" ]; then
+        mv "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
+    else
+        sudo mv "$binary_path" "${INSTALL_DIR}/${BINARY_NAME}"
+    fi
 
     echo "Installed akin $version successfully."
 }

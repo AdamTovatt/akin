@@ -8,6 +8,15 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.1" />
     <PackageReference Include="ModelContextProtocol" Version="1.2.0" />
+    <!--
+      Direct reference so VectorSharp.Embedding.NomicEmbed's build/*.targets
+      file (which marks the ONNX model files as <Content> with
+      CopyToPublishDirectory) is imported for this publishing project. Without
+      it, the Models folder ends up empty in dotnet publish output because
+      transitive content from indirect package dependencies doesn't flow
+      through to the top-level project's publish output.
+    -->
+    <PackageReference Include="VectorSharp.Embedding.NomicEmbed" Version="1.0.2" />
   </ItemGroup>
 
   <PropertyGroup>
