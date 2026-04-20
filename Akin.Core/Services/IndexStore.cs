@@ -11,11 +11,16 @@ namespace Akin.Core.Services
     /// <see cref="CosineVectorStore{TKey}"/> and persists chunk metadata,
     /// fingerprints, and the manifest as JSON sidecars.
     ///
-    /// Write operations are serialised through an internal async lock. Reads
-    /// (search, chunk lookup, status) are lock-free and rely on
-    /// <see cref="Volatile"/> semantics for the vector-store reference plus
-    /// <see cref="ConcurrentDictionary{TKey,TValue}"/> for chunk and fingerprint
-    /// maps, so a concurrent search during a reindex never observes torn state.
+    /// Write operations are serialised through an internal async lock. The vector
+    /// store and chunk-id map are published together as a single immutable
+    /// <see cref="IndexSnapshot"/> reference. Readers <see cref="Volatile"/>-read
+    /// the snapshot once and consume both fields from it, so a concurrent full
+    /// reindex (which resets the chunk-id space) can never produce a search that
+    /// mixes a new vector with an old chunk-info lookup, or vice versa.
+    /// Incremental writes (single-file replace/remove) mutate the current
+    /// snapshot's <see cref="ConcurrentDictionary{TKey,TValue}"/> in place,
+    /// relying on its thread-safe per-entry semantics, because they only add
+    /// monotonically new ids or remove specific ones — they never reuse ids.
     ///
     /// Persist ordering writes <c>manifest.json</c> last, so a crash mid-persist
     /// leaves an old manifest in place and the next <see cref="OpenAsync"/>
@@ -30,6 +35,16 @@ namespace Akin.Core.Services
     /// </summary>
     public sealed class IndexStore : IIndexStore
     {
+        /// <summary>
+        /// A consistent pairing of the vector store and the chunk-id map. Full
+        /// reindexes build a fresh instance and publish it via
+        /// <see cref="Volatile.Write{T}(ref T, T)"/>; incremental writes mutate
+        /// the <see cref="ChunksById"/> of the current instance in place.
+        /// </summary>
+        private sealed record IndexSnapshot(
+            CosineVectorStore<int> VectorStore,
+            ConcurrentDictionary<int, ChunkInfo> ChunksById);
+
         private const string VectorsFileName = "vectors.bin";
         private const string ChunksFileName = "chunks.json";
         private const string ManifestFileName = "manifest.json";
@@ -48,13 +63,13 @@ namespace Akin.Core.Services
         private readonly int _dimension;
 
         private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
-        private readonly ConcurrentDictionary<int, ChunkInfo> _chunksById = new ConcurrentDictionary<int, ChunkInfo>();
         private readonly ConcurrentDictionary<string, FileFingerprint> _fingerprints = new ConcurrentDictionary<string, FileFingerprint>(StringComparer.Ordinal);
         private readonly Dictionary<string, List<int>> _chunksByFile = new Dictionary<string, List<int>>(StringComparer.Ordinal);
 
-        // Accessed lock-free by readers via Volatile.Read and swapped atomically
-        // under _lock by writers. Never mutated in place once published.
-        private CosineVectorStore<int> _vectorStore;
+        // The canonical (vector store, chunks-by-id) pairing. Accessed lock-free by
+        // readers via Volatile.Read. Full reindexes publish a fresh instance; other
+        // write paths mutate the existing ChunksById in place under _lock.
+        private IndexSnapshot _snapshot;
 
         private Manifest? _manifest;
         private int _nextId;
@@ -65,7 +80,7 @@ namespace Akin.Core.Services
 
         public Manifest? Manifest => Volatile.Read(ref _manifest);
         public bool IsReady => Volatile.Read(ref _ready);
-        public int ChunkCount => _chunksById.Count;
+        public int ChunkCount => Volatile.Read(ref _snapshot).ChunksById.Count;
         public int FileCount
         {
             get
@@ -89,7 +104,9 @@ namespace Akin.Core.Services
             _manifestPath = Path.Combine(folderPath, ManifestFileName);
             _fingerprintsPath = Path.Combine(folderPath, FingerprintsFileName);
             _dimension = dimension;
-            _vectorStore = new CosineVectorStore<int>("akin", dimension);
+            _snapshot = new IndexSnapshot(
+                new CosineVectorStore<int>("akin", dimension),
+                new ConcurrentDictionary<int, ChunkInfo>());
         }
 
         public async Task OpenAsync(CancellationToken cancellationToken = default)
@@ -141,13 +158,13 @@ namespace Akin.Core.Services
                     return;
                 }
 
-                _chunksById.Clear();
+                ConcurrentDictionary<int, ChunkInfo> freshChunksById = new ConcurrentDictionary<int, ChunkInfo>();
                 _chunksByFile.Clear();
                 _fingerprints.Clear();
 
                 foreach (ChunkInfo chunk in chunks)
                 {
-                    _chunksById[chunk.Id] = chunk;
+                    freshChunksById[chunk.Id] = chunk;
                     if (!_chunksByFile.TryGetValue(chunk.RelativePath, out List<int>? ids))
                     {
                         ids = new List<int>();
@@ -164,9 +181,12 @@ namespace Akin.Core.Services
                 _nextId = chunks.Count == 0 ? 0 : chunks.Max(c => c.Id) + 1;
                 Volatile.Write(ref _manifest, manifest);
 
-                CosineVectorStore<int> oldStore = Volatile.Read(ref _vectorStore);
-                Volatile.Write(ref _vectorStore, freshStore);
-                oldStore.Dispose();
+                IndexSnapshot old = Volatile.Read(ref _snapshot);
+                Volatile.Write(ref _snapshot, new IndexSnapshot(freshStore, freshChunksById));
+                // Intentionally do not Dispose(old.VectorStore). A concurrent search
+                // may still hold the old snapshot reference and scan against it; GC
+                // will collect the old store once no reader retains it. The lock
+                // resources inside CosineVectorStore are GC-reclaimable.
 
                 Volatile.Write(ref _ready, true);
             }
@@ -190,7 +210,7 @@ namespace Akin.Core.Services
             try
             {
                 CosineVectorStore<int> freshStore = new CosineVectorStore<int>("akin", _dimension);
-                Dictionary<int, ChunkInfo> freshChunks = new Dictionary<int, ChunkInfo>();
+                ConcurrentDictionary<int, ChunkInfo> freshChunksById = new ConcurrentDictionary<int, ChunkInfo>();
                 Dictionary<string, List<int>> freshByFile = new Dictionary<string, List<int>>(StringComparer.Ordinal);
 
                 int id = 0;
@@ -198,7 +218,7 @@ namespace Akin.Core.Services
                 {
                     ChunkInfo info = ToInfo(draft, id);
                     await freshStore.AddAsync(id, embedding, cancellationToken);
-                    freshChunks[id] = info;
+                    freshChunksById[id] = info;
                     if (!freshByFile.TryGetValue(info.RelativePath, out List<int>? ids))
                     {
                         ids = new List<int>();
@@ -208,17 +228,15 @@ namespace Akin.Core.Services
                     id++;
                 }
 
-                // Commit new state atomically: vector store via Volatile, dicts via
-                // clear+repopulate while holding the lock. Readers are either fully
-                // on the old state (pre-swap) or fully on the new (post-swap);
-                // they never observe half-converted data because they only touch
-                // the vector store reference and the concurrent chunk dict.
-                CosineVectorStore<int> oldStore = Volatile.Read(ref _vectorStore);
-                Volatile.Write(ref _vectorStore, freshStore);
-
-                _chunksById.Clear();
-                foreach (KeyValuePair<int, ChunkInfo> pair in freshChunks)
-                    _chunksById[pair.Key] = pair.Value;
+                // Commit new state atomically by swapping the snapshot reference in
+                // one Volatile.Write. Readers are either fully on the old snapshot or
+                // fully on the new; they never observe half-converted state. The id
+                // space resets to zero on full reindex, so the snapshot-level
+                // atomicity is what keeps pre-computed chunk filters consistent with
+                // the vector scan they run against.
+                Volatile.Write(ref _snapshot, new IndexSnapshot(freshStore, freshChunksById));
+                // Intentionally do not Dispose the old vector store; see OpenAsync
+                // for the rationale — concurrent searches may still be scanning it.
 
                 _chunksByFile.Clear();
                 foreach (KeyValuePair<string, List<int>> pair in freshByFile)
@@ -231,8 +249,6 @@ namespace Akin.Core.Services
                 _nextId = id;
                 Volatile.Write(ref _manifest, manifest);
                 Volatile.Write(ref _ready, true);
-
-                oldStore.Dispose();
 
                 await PersistOrDeferLockedAsync(cancellationToken);
             }
@@ -256,13 +272,13 @@ namespace Akin.Core.Services
             {
                 await RemoveFileLockedAsync(relativePath, cancellationToken);
 
-                CosineVectorStore<int> store = Volatile.Read(ref _vectorStore);
+                IndexSnapshot snapshot = Volatile.Read(ref _snapshot);
                 foreach ((ChunkDraft draft, float[] embedding) in chunks)
                 {
                     int id = _nextId++;
                     ChunkInfo info = ToInfo(draft, id);
-                    await store.AddAsync(id, embedding, cancellationToken);
-                    _chunksById[id] = info;
+                    await snapshot.VectorStore.AddAsync(id, embedding, cancellationToken);
+                    snapshot.ChunksById[id] = info;
                     if (!_chunksByFile.TryGetValue(info.RelativePath, out List<int>? ids))
                     {
                         ids = new List<int>();
@@ -307,32 +323,55 @@ namespace Akin.Core.Services
             }
         }
 
-        public async Task<IReadOnlyList<(int Id, float Score)>> FindMostSimilarAsync(
+        public Task<IReadOnlyList<(ChunkInfo Chunk, float Score)>> FindMostSimilarAsync(
             float[] queryVector,
             int count,
             CancellationToken cancellationToken = default)
         {
+            return FindMostSimilarAsync(queryVector, count, chunkFilter: null, cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<(ChunkInfo Chunk, float Score)>> FindMostSimilarAsync(
+            float[] queryVector,
+            int count,
+            Func<ChunkInfo, bool>? chunkFilter,
+            CancellationToken cancellationToken = default)
+        {
             ArgumentNullException.ThrowIfNull(queryVector);
-            if (count <= 0) return Array.Empty<(int, float)>();
+            if (count <= 0) return Array.Empty<(ChunkInfo, float)>();
 
-            // Lock-free read of the current vector store reference. The underlying
-            // CosineVectorStore has its own internal lock for concurrent Add/Remove/Find,
-            // so operating on the snapshot reference is safe even if writers subsequently
-            // swap in a new store.
-            CosineVectorStore<int> store = Volatile.Read(ref _vectorStore);
-            IReadOnlyList<SearchResult<int>> results = await store.FindMostSimilarAsync(queryVector, count, cancellationToken);
+            // Capture the snapshot once. The vector scan, the chunk-filter allow-set
+            // computation, and the id→ChunkInfo lookup all use this one reference,
+            // so a concurrent full reindex (which would swap the snapshot) never
+            // mixes a new vector with an old chunk-info or vice versa.
+            IndexSnapshot snapshot = Volatile.Read(ref _snapshot);
 
-            List<(int, float)> projected = new List<(int, float)>(results.Count);
+            Func<int, bool>? idFilter = null;
+            if (chunkFilter != null)
+            {
+                HashSet<int> allowedIds = new HashSet<int>();
+                foreach (ChunkInfo chunk in snapshot.ChunksById.Values)
+                {
+                    if (chunkFilter(chunk))
+                        allowedIds.Add(chunk.Id);
+                }
+                idFilter = allowedIds.Contains;
+            }
+
+            IReadOnlyList<SearchResult<int>> results = await snapshot.VectorStore.FindMostSimilarAsync(queryVector, count, idFilter, cancellationToken);
+
+            List<(ChunkInfo, float)> projected = new List<(ChunkInfo, float)>(results.Count);
             foreach (SearchResult<int> result in results)
             {
-                projected.Add((result.Id, result.Score));
+                if (snapshot.ChunksById.TryGetValue(result.Id, out ChunkInfo? chunk))
+                    projected.Add((chunk, result.Score));
             }
             return projected;
         }
 
         public ChunkInfo? GetChunk(int id)
         {
-            _chunksById.TryGetValue(id, out ChunkInfo? info);
+            Volatile.Read(ref _snapshot).ChunksById.TryGetValue(id, out ChunkInfo? info);
             return info;
         }
 
@@ -340,7 +379,7 @@ namespace Akin.Core.Services
         {
             // ConcurrentDictionary.Values returns an ICollection snapshot; wrap as a
             // read-only list for the interface contract.
-            return _chunksById.Values.ToArray();
+            return Volatile.Read(ref _snapshot).ChunksById.Values.ToArray();
         }
 
         public FileFingerprint? GetFingerprint(string relativePath)
@@ -384,7 +423,7 @@ namespace Akin.Core.Services
             await _lock.WaitAsync();
             try
             {
-                Volatile.Read(ref _vectorStore).Dispose();
+                Volatile.Read(ref _snapshot).VectorStore.Dispose();
             }
             finally
             {
@@ -408,11 +447,11 @@ namespace Akin.Core.Services
                 return 0;
 
             int count = ids.Count;
-            CosineVectorStore<int> store = Volatile.Read(ref _vectorStore);
+            IndexSnapshot snapshot = Volatile.Read(ref _snapshot);
             foreach (int id in ids)
             {
-                await store.RemoveAsync(id, cancellationToken);
-                _chunksById.TryRemove(id, out _);
+                await snapshot.VectorStore.RemoveAsync(id, cancellationToken);
+                snapshot.ChunksById.TryRemove(id, out _);
             }
             _chunksByFile.Remove(relativePath);
             return count;
@@ -439,12 +478,13 @@ namespace Akin.Core.Services
 
             try
             {
+                IndexSnapshot snapshot = Volatile.Read(ref _snapshot);
                 await using (FileStream stream = File.Create(tempVectors))
                 {
-                    await Volatile.Read(ref _vectorStore).SaveAsync(stream);
+                    await snapshot.VectorStore.SaveAsync(stream);
                 }
 
-                List<ChunkInfo> chunkList = _chunksById.Values.OrderBy(c => c.Id).ToList();
+                List<ChunkInfo> chunkList = snapshot.ChunksById.Values.OrderBy(c => c.Id).ToList();
                 await using (FileStream chunkStream = File.Create(tempChunks))
                 {
                     await JsonSerializer.SerializeAsync(chunkStream, chunkList, JsonOptions, cancellationToken);

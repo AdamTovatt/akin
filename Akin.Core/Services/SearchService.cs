@@ -1,5 +1,6 @@
 using Akin.Core.Interfaces;
 using Akin.Core.Models;
+using Microsoft.Extensions.FileSystemGlobbing;
 using VectorSharp.Embedding;
 
 namespace Akin.Core.Services
@@ -12,13 +13,16 @@ namespace Akin.Core.Services
     {
         private readonly EmbeddingService _embedder;
         private readonly IIndexStore _store;
+        private readonly IChunkerSelector _chunkerSelector;
 
-        public SearchService(EmbeddingService embedder, IIndexStore store)
+        public SearchService(EmbeddingService embedder, IIndexStore store, IChunkerSelector chunkerSelector)
         {
             ArgumentNullException.ThrowIfNull(embedder);
             ArgumentNullException.ThrowIfNull(store);
+            ArgumentNullException.ThrowIfNull(chunkerSelector);
             _embedder = embedder;
             _store = store;
+            _chunkerSelector = chunkerSelector;
         }
 
         public async Task<IReadOnlyList<SearchHit>> SearchAsync(string query, SearchOptions options, CancellationToken cancellationToken = default)
@@ -31,18 +35,14 @@ namespace Akin.Core.Services
 
             float[] queryVector = await _embedder.EmbedAsync(query, EmbeddingPurpose.Query, cancellationToken);
 
+            Func<ChunkInfo, bool>? chunkFilter = BuildChunkFilter(options);
+
             int candidatePoolSize = Math.Max(options.MaxResults * 5, 25);
-            IReadOnlyList<(int Id, float Score)> candidates = await _store.FindMostSimilarAsync(queryVector, candidatePoolSize, cancellationToken);
+            IReadOnlyList<(ChunkInfo Chunk, float Score)> candidates = await _store.FindMostSimilarAsync(queryVector, candidatePoolSize, chunkFilter, cancellationToken);
 
             Dictionary<string, List<MatchedRegion>> byFile = new Dictionary<string, List<MatchedRegion>>(StringComparer.Ordinal);
-            foreach ((int id, float score) in candidates)
+            foreach ((ChunkInfo chunk, float score) in candidates)
             {
-                if (options.MinimumScore is float min && score < min)
-                    continue;
-
-                ChunkInfo? chunk = _store.GetChunk(id);
-                if (chunk == null)
-                    continue;
 
                 if (!byFile.TryGetValue(chunk.RelativePath, out List<MatchedRegion>? regions))
                 {
@@ -81,6 +81,52 @@ namespace Akin.Core.Services
             }
 
             return hits;
+        }
+
+        /// <summary>
+        /// Builds a chunk-level predicate from the configured path globs and file-kind
+        /// filter. Returned to the store, which evaluates it once per chunk against the
+        /// snapshot it scans; that keeps the allow-set consistent with the vector scan
+        /// even if a concurrent reindex swaps state mid-search.
+        /// </summary>
+        private Func<ChunkInfo, bool>? BuildChunkFilter(SearchOptions options)
+        {
+            bool hasPathFilter = options.IncludePaths.Count > 0 || options.ExcludePaths.Count > 0;
+            bool hasKindFilter = options.IncludeKinds.Count > 0;
+            if (!hasPathFilter && !hasKindFilter)
+                return null;
+
+            Matcher? matcher = null;
+            if (hasPathFilter)
+            {
+                matcher = new Matcher(StringComparison.Ordinal);
+                if (options.IncludePaths.Count == 0)
+                {
+                    // No include patterns means "everything, then subtract excludes".
+                    matcher.AddInclude("**/*");
+                }
+                else
+                {
+                    foreach (string pattern in options.IncludePaths)
+                        matcher.AddInclude(pattern);
+                }
+                foreach (string pattern in options.ExcludePaths)
+                    matcher.AddExclude(pattern);
+            }
+
+            HashSet<FileKind>? allowedKinds = hasKindFilter
+                ? new HashSet<FileKind>(options.IncludeKinds)
+                : null;
+
+            IChunkerSelector selector = _chunkerSelector;
+            return chunk =>
+            {
+                if (matcher != null && !matcher.Match(chunk.RelativePath).HasMatches)
+                    return false;
+                if (allowedKinds != null && !allowedKinds.Contains(selector.GetFileKind(chunk.RelativePath)))
+                    return false;
+                return true;
+            };
         }
 
         /// <summary>

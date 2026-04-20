@@ -53,9 +53,7 @@ namespace Akin.Core.Commands
             foreach (SearchHit hit in hits)
             {
                 details.Append(hit.RelativePath)
-                       .Append("  (score ")
-                       .Append(hit.AggregateScore.ToString("0.000"))
-                       .Append(", ")
+                       .Append("  (")
                        .Append(hit.Regions.Count)
                        .Append(' ')
                        .Append(Pluralize.Of(hit.Regions.Count, "match", "matches"))
@@ -66,9 +64,7 @@ namespace Akin.Core.Commands
                     details.Append("  lines ")
                            .Append(region.StartLine)
                            .Append('-')
-                           .Append(region.EndLine)
-                           .Append("  score ")
-                           .AppendLine(region.Score.ToString("0.000"));
+                           .AppendLine(region.EndLine.ToString());
 
                     if (region.Snippet != null)
                     {

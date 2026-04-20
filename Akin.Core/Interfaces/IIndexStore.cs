@@ -73,11 +73,27 @@ namespace Akin.Core.Interfaces
 
         /// <summary>
         /// Runs a similarity search and returns the top <paramref name="count"/>
-        /// chunk ids along with their similarity scores.
+        /// matching chunks along with their similarity scores. The chunk info is
+        /// looked up from the same internal snapshot that the vector scan ran
+        /// against, so concurrent reindexes never pair a new vector with an old
+        /// chunk info.
         /// </summary>
-        Task<IReadOnlyList<(int Id, float Score)>> FindMostSimilarAsync(
+        Task<IReadOnlyList<(ChunkInfo Chunk, float Score)>> FindMostSimilarAsync(
             float[] queryVector,
             int count,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Runs a similarity search considering only chunks matching the supplied
+        /// <paramref name="chunkFilter"/>. The implementation evaluates the filter
+        /// once per chunk against the same snapshot used for the vector scan, so
+        /// the filter decision always corresponds to the chunk that contributed
+        /// the vector being scored.
+        /// </summary>
+        Task<IReadOnlyList<(ChunkInfo Chunk, float Score)>> FindMostSimilarAsync(
+            float[] queryVector,
+            int count,
+            Func<ChunkInfo, bool>? chunkFilter,
             CancellationToken cancellationToken = default);
 
         /// <summary>

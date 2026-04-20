@@ -21,6 +21,8 @@ namespace Akin.Core.Services
         private readonly HashSet<string> _knownTextExtensions;
         private readonly HashSet<string> _knownTextFilenames;
         private readonly HashSet<string> _filenameOnlyExtensions;
+        private readonly Dictionary<string, FileKind> _kindByExtension;
+        private readonly HashSet<string> _docsFilenames;
         private readonly ChunkerConfig _plainTextConfig;
         private readonly string _fingerprint;
 
@@ -131,7 +133,67 @@ namespace Akin.Core.Services
                 "TODO", "INSTALL",
             };
 
+            _docsFilenames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "LICENSE", "LICENCE", "COPYING", "COPYRIGHT",
+                "README", "CONTRIBUTING", "CONTRIBUTORS", "AUTHORS",
+                "CHANGELOG", "CHANGES", "HISTORY",
+                "NOTICE", "CODEOWNERS", "MAINTAINERS",
+                "TODO", "INSTALL",
+            };
+
+            _kindByExtension = BuildKindByExtension(_filenameOnlyExtensions);
+
             _fingerprint = ComputeFingerprint();
+        }
+
+        private static Dictionary<string, FileKind> BuildKindByExtension(HashSet<string> filenameOnlyExtensions)
+        {
+            Dictionary<string, FileKind> map = new Dictionary<string, FileKind>(StringComparer.OrdinalIgnoreCase);
+
+            string[] docsExtensions =
+            {
+                ".md", ".markdown", ".mdx",
+                ".txt", ".rst", ".adoc", ".asciidoc", ".text",
+            };
+            foreach (string ext in docsExtensions) map[ext] = FileKind.Docs;
+
+            string[] codeExtensions =
+            {
+                ".cs",
+                ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs",
+                ".html", ".htm", ".xhtml",
+                ".css", ".scss", ".sass", ".less",
+                ".py", ".pyi", ".pyw",
+                ".sh", ".bash", ".zsh", ".fish", ".ps1", ".psm1", ".psd1", ".bat", ".cmd",
+                ".fs", ".fsi", ".fsx", ".vb", ".go", ".rs", ".java", ".kt", ".kts", ".scala",
+                ".groovy", ".swift", ".m", ".mm", ".c", ".cc", ".cpp", ".cxx",
+                ".h", ".hh", ".hpp", ".hxx", ".php", ".phtml", ".pl", ".pm",
+                ".sql", ".lua", ".r", ".dart", ".ex", ".exs", ".erl", ".hs", ".ml", ".mli",
+                ".rb", ".erb", ".rake",
+            };
+            foreach (string ext in codeExtensions) map[ext] = FileKind.Code;
+
+            string[] configExtensions =
+            {
+                ".json", ".jsonc", ".json5",
+                ".yaml", ".yml", ".toml",
+                ".xml", ".xsd", ".xsl", ".xslt",
+                ".ini", ".cfg", ".conf",
+                ".env", ".properties", ".editorconfig",
+                ".gitignore", ".gitattributes", ".gitmodules", ".gitconfig",
+                ".dockerignore", ".prettierrc", ".eslintrc", ".babelrc",
+                ".csproj", ".vbproj", ".fsproj", ".sln", ".slnx",
+                ".props", ".targets", ".nuspec", ".gradle", ".pom",
+            };
+            foreach (string ext in configExtensions) map[ext] = FileKind.Config;
+
+            // Filename-only assets (images, fonts, docs like PDF, archives) land in
+            // Config alongside other non-source repo resources, so "--type code"
+            // cleanly excludes them.
+            foreach (string ext in filenameOnlyExtensions) map[ext] = FileKind.Config;
+
+            return map;
         }
 
         public ChunkerConfig? SelectFor(string relativePath)
@@ -164,6 +226,28 @@ namespace Akin.Core.Services
 
             string extension = Path.GetExtension(relativePath);
             return !string.IsNullOrEmpty(extension) && _filenameOnlyExtensions.Contains(extension);
+        }
+
+        public FileKind GetFileKind(string relativePath)
+        {
+            ArgumentNullException.ThrowIfNull(relativePath);
+
+            string extension = Path.GetExtension(relativePath);
+            if (!string.IsNullOrEmpty(extension) && _kindByExtension.TryGetValue(extension, out FileKind kind))
+                return kind;
+
+            string filename = Path.GetFileName(relativePath);
+            if (_docsFilenames.Contains(filename))
+                return FileKind.Docs;
+
+            // Well-known build/project files without an extension (Dockerfile,
+            // Makefile, Gemfile, etc.) that aren't in the docs set fall into Config.
+            if (_knownTextFilenames.Contains(filename))
+                return FileKind.Config;
+
+            // Unknown but still indexed (plain-text fallback or unusual extension) —
+            // default to Docs since unlabelled prose-ish content is the likely case.
+            return FileKind.Docs;
         }
 
         private static ChunkerConfig Build(string name, IReadOnlyList<string> breakStrings, IReadOnlyList<string> stopSignals)

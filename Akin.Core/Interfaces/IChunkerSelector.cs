@@ -24,6 +24,13 @@ namespace Akin.Core.Interfaces
         bool ShouldIndexByFilename(string relativePath);
 
         /// <summary>
+        /// Classifies <paramref name="relativePath"/> into a coarse <see cref="FileKind"/>
+        /// based on its extension or well-known filename. Used to scope searches by
+        /// file category. Called on the search hot path; must be cheap.
+        /// </summary>
+        FileKind GetFileKind(string relativePath);
+
+        /// <summary>
         /// A stable fingerprint over all configurations this selector can produce, used
         /// to detect when the chunking strategy has changed and the index must be rebuilt.
         /// </summary>

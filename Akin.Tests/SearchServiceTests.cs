@@ -21,7 +21,7 @@ namespace Akin.Tests
             await _store.OpenAsync();
 
             _embedder = new EmbeddingService(() => new FakeEmbeddingProvider(Dimension));
-            _searcher = new SearchService(_embedder, _store);
+            _searcher = new SearchService(_embedder, _store, new ChunkerSelector());
         }
 
         public async Task DisposeAsync()
@@ -116,19 +116,61 @@ namespace Akin.Tests
         }
 
         [Fact]
-        public async Task SearchAsync_RespectsMinimumScore()
+        public async Task SearchAsync_IncludeKindsCode_LimitsToCodeFiles()
         {
             await SeedAsync(
-                ("a.cs", 1, 10, "matching"),
-                ("b.cs", 1, 10, "completely orthogonal content that shares no tokens")
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("README.md", 1, 10, "alpha beta"),
+                ("config.json", 1, 10, "alpha beta")
             );
 
-            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("matching", new SearchOptions
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
             {
-                MinimumScore = 0.99f,
+                MaxResults = 10,
+                IncludeKinds = new[] { FileKind.Code },
             });
 
-            Assert.All(hits, hit => Assert.True(hit.AggregateScore >= 0.99f));
+            Assert.Single(hits);
+            Assert.Equal("src/a.cs", hits[0].RelativePath);
+        }
+
+        [Fact]
+        public async Task SearchAsync_IncludeKindsMultiple_UnionsCategories()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("README.md", 1, 10, "alpha beta"),
+                ("config.json", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                IncludeKinds = new[] { FileKind.Code, FileKind.Config },
+            });
+
+            Assert.Equal(2, hits.Count);
+            Assert.DoesNotContain(hits, h => h.RelativePath.EndsWith(".md"));
+        }
+
+        [Fact]
+        public async Task SearchAsync_IncludeKindsAndPaths_CombineAsAnd()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("tests/a.cs", 1, 10, "alpha beta"),
+                ("src/config.json", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                IncludePaths = new[] { "src/**" },
+                IncludeKinds = new[] { FileKind.Code },
+            });
+
+            Assert.Single(hits);
+            Assert.Equal("src/a.cs", hits[0].RelativePath);
         }
 
         [Fact]
@@ -143,6 +185,99 @@ namespace Akin.Tests
 
             IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("content", new SearchOptions { MaxResults = 3 });
             Assert.True(hits.Count <= 3);
+        }
+
+        [Fact]
+        public async Task SearchAsync_IncludePaths_LimitsToMatchingFiles()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("tests/b.cs", 1, 10, "alpha beta"),
+                ("docs/c.md", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                IncludePaths = new[] { "src/**" },
+            });
+
+            Assert.Single(hits);
+            Assert.Equal("src/a.cs", hits[0].RelativePath);
+        }
+
+        [Fact]
+        public async Task SearchAsync_ExcludePaths_RemovesMatchingFiles()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("tests/b.cs", 1, 10, "alpha beta"),
+                ("docs/c.md", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                ExcludePaths = new[] { "tests/**", "docs/**" },
+            });
+
+            Assert.Single(hits);
+            Assert.Equal("src/a.cs", hits[0].RelativePath);
+        }
+
+        [Fact]
+        public async Task SearchAsync_IncludeAndExclude_ExcludeWins()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("src/a.test.cs", 1, 10, "alpha beta"),
+                ("src/sub/b.cs", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                IncludePaths = new[] { "src/**" },
+                ExcludePaths = new[] { "**/*.test.cs" },
+            });
+
+            Assert.Equal(2, hits.Count);
+            Assert.DoesNotContain(hits, h => h.RelativePath.EndsWith(".test.cs"));
+        }
+
+        [Fact]
+        public async Task SearchAsync_IncludePaths_ExtensionGlob()
+        {
+            await SeedAsync(
+                ("a.cs", 1, 10, "alpha beta"),
+                ("b.md", 1, 10, "alpha beta"),
+                ("sub/c.cs", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxResults = 10,
+                IncludePaths = new[] { "**/*.cs" },
+            });
+
+            Assert.Equal(2, hits.Count);
+            Assert.All(hits, h => Assert.EndsWith(".cs", h.RelativePath));
+        }
+
+        [Fact]
+        public async Task SearchAsync_NoMatchingPaths_ReturnsNoHits()
+        {
+            await SeedAsync(
+                ("src/a.cs", 1, 10, "alpha beta"),
+                ("tests/b.cs", 1, 10, "alpha beta")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                IncludePaths = new[] { "nonexistent/**" },
+            });
+
+            Assert.Empty(hits);
         }
     }
 }

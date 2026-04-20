@@ -126,5 +126,52 @@ namespace Akin.Tests
             Assert.Equal(a, b);
             Assert.False(string.IsNullOrEmpty(a));
         }
+
+        [Theory]
+        [InlineData("src/Foo.cs", FileKind.Code)]
+        [InlineData("app.ts", FileKind.Code)]
+        [InlineData("page.html", FileKind.Code)]
+        [InlineData("main.py", FileKind.Code)]
+        [InlineData("scripts/deploy.sh", FileKind.Code)]
+        [InlineData("server.go", FileKind.Code)]
+        [InlineData("lib.rs", FileKind.Code)]
+        [InlineData("README.md", FileKind.Docs)]
+        [InlineData("docs/intro.markdown", FileKind.Docs)]
+        [InlineData("notes.txt", FileKind.Docs)]
+        [InlineData("LICENSE", FileKind.Docs)]
+        [InlineData("CHANGELOG", FileKind.Docs)]
+        [InlineData("config.json", FileKind.Config)]
+        [InlineData("pipeline.yaml", FileKind.Config)]
+        [InlineData("Akin.Core.csproj", FileKind.Config)]
+        [InlineData("Dockerfile", FileKind.Config)]
+        [InlineData("Makefile", FileKind.Config)]
+        [InlineData("assets/logo.png", FileKind.Config)]
+        public void GetFileKind_Classifies(string relativePath, FileKind expected)
+        {
+            Assert.Equal(expected, _selector.GetFileKind(relativePath));
+        }
+
+        [Theory]
+        [InlineData("code", FileKind.Code)]
+        [InlineData("Code", FileKind.Code)]
+        [InlineData("docs", FileKind.Docs)]
+        [InlineData("doc", FileKind.Docs)]
+        [InlineData("DOCS", FileKind.Docs)]
+        [InlineData("config", FileKind.Config)]
+        [InlineData("cfg", FileKind.Config)]
+        public void FileKinds_TryParse_KnownValues(string input, FileKind expected)
+        {
+            Assert.True(FileKinds.TryParse(input, out FileKind kind));
+            Assert.Equal(expected, kind);
+        }
+
+        [Theory]
+        [InlineData("source")]
+        [InlineData("")]
+        [InlineData("markdown")]
+        public void FileKinds_TryParse_UnknownValue_ReturnsFalse(string input)
+        {
+            Assert.False(FileKinds.TryParse(input, out _));
+        }
     }
 }

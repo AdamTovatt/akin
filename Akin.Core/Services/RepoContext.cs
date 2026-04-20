@@ -79,7 +79,7 @@ namespace Akin.Core.Services
 
                 FileChunker fileChunker = new FileChunker(repoRoot, chunkerSelector);
                 IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId);
-                ISearchService searchService = new SearchService(embedder, store);
+                ISearchService searchService = new SearchService(embedder, store, chunkerSelector);
                 IndexReconciler reconciler = new IndexReconciler(repoRoot, scanner, store, indexer);
 
                 return new RepoContext(

@@ -7,7 +7,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="VectorSharp.Storage" Version="1.1.0" />
+    <PackageReference Include="VectorSharp.Storage" Version="1.2.0" />
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="9.0.0" />
     <PackageReference Include="VectorSharp.Embedding" Version="1.0.3" />
     <PackageReference Include="VectorSharp.Embedding.NomicEmbed" Version="1.0.3" />
     <PackageReference Include="VectorSharp.Chunking" Version="1.0.0" />

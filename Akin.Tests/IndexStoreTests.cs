@@ -231,5 +231,74 @@ namespace Akin.Tests
             // On disposal, the pending persist flushes.
             Assert.True(File.Exists(vectorsPath));
         }
+
+        [Fact]
+        public async Task FindMostSimilarAsync_ChunkFilter_SurvivesConcurrentReindex()
+        {
+            // Regression test for the race where a pre-computed chunk-id allow-set
+            // is built from one snapshot and consumed against a newer snapshot. A
+            // full reindex resets ids to zero, so a stale allow-set computed against
+            // the previous snapshot could admit ids in the new snapshot that refer
+            // to different files. The IndexSnapshot refactor makes the filter and
+            // the scan consume the same immutable snapshot, so this test drives
+            // many searches in parallel with repeated reindexes and asserts that
+            // every hit matches the filter we passed in.
+
+            Manifest manifest = BuildManifest();
+
+            string[] paths = new[] { "src/a.cs", "src/b.cs", "tests/a.cs", "tests/b.cs" };
+            FileFingerprint[] fingerprints = paths.Select(p => MakeFingerprint(p)).ToArray();
+
+            async Task ReindexAsync(int seedOffset)
+            {
+                (ChunkDraft, float[])[] chunks = paths
+                    .Select((p, i) => MakeEntry(i + seedOffset, p, 1, 10, $"text {p} {seedOffset}"))
+                    .ToArray();
+                await _store.ReplaceAllAsync(manifest, chunks, fingerprints);
+            }
+
+            await ReindexAsync(0);
+
+            float[] query = new float[Dimension];
+            query[0] = 1.0f;
+
+            Func<ChunkInfo, bool> filter = c => c.RelativePath.StartsWith("src/");
+
+            using CancellationTokenSource cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+            int reindexCount = 0;
+
+            Task reindexer = Task.Run(async () =>
+            {
+                int seed = 1;
+                while (!cts.IsCancellationRequested)
+                {
+                    await ReindexAsync(seed++);
+                    Interlocked.Increment(ref reindexCount);
+                }
+            });
+
+            int searchCount = 0;
+            int violations = 0;
+            Task searcher = Task.Run(async () =>
+            {
+                while (!cts.IsCancellationRequested)
+                {
+                    IReadOnlyList<(ChunkInfo Chunk, float Score)> hits =
+                        await _store.FindMostSimilarAsync(query, 10, filter);
+                    foreach ((ChunkInfo chunk, float _) in hits)
+                    {
+                        if (!chunk.RelativePath.StartsWith("src/"))
+                            Interlocked.Increment(ref violations);
+                    }
+                    Interlocked.Increment(ref searchCount);
+                }
+            });
+
+            await Task.WhenAll(reindexer, searcher);
+
+            Assert.True(reindexCount > 5, $"Expected the reindexer to fire many times; got {reindexCount}.");
+            Assert.True(searchCount > 5, $"Expected the searcher to run many times; got {searchCount}.");
+            Assert.Equal(0, violations);
+        }
     }
 }

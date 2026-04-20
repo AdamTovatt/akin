@@ -58,12 +58,14 @@ namespace Akin.Core.Commands
         private SearchCommand BuildSearchFromArgs(string[] args)
         {
             if (args.Length < 2)
-                throw new ArgumentException("Usage: akin search <query> [--max N] [--no-snippets] [--min-score S]");
+                throw new ArgumentException("Usage: akin search <query> [--max N] [--no-snippets] [--path GLOB] [--exclude GLOB] [--type KIND]");
 
             List<string> queryParts = new List<string>();
             int maxResults = 10;
             bool includeSnippets = true;
-            float? minScore = null;
+            List<string> includePaths = new List<string>();
+            List<string> excludePaths = new List<string>();
+            List<FileKind> includeKinds = new List<FileKind>();
 
             for (int i = 1; i < args.Length; i++)
             {
@@ -79,13 +81,23 @@ namespace Akin.Core.Commands
                 {
                     includeSnippets = false;
                 }
-                else if (arg.Equals("--min-score", StringComparison.OrdinalIgnoreCase))
+                else if (arg.Equals("--path", StringComparison.OrdinalIgnoreCase))
                 {
                     if (i + 1 >= args.Length)
-                        throw new ArgumentException("--min-score requires a value.");
-                    if (!float.TryParse(args[++i], NumberStyles.Float, CultureInfo.InvariantCulture, out float parsed))
-                        throw new ArgumentException("--min-score must be a number.");
-                    minScore = parsed;
+                        throw new ArgumentException("--path requires a glob pattern.");
+                    includePaths.Add(args[++i]);
+                }
+                else if (arg.Equals("--exclude", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 >= args.Length)
+                        throw new ArgumentException("--exclude requires a glob pattern.");
+                    excludePaths.Add(args[++i]);
+                }
+                else if (arg.Equals("--type", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 >= args.Length)
+                        throw new ArgumentException("--type requires a value (code, docs, or config).");
+                    includeKinds.Add(ParseFileKind(args[++i]));
                 }
                 else
                 {
@@ -101,9 +113,18 @@ namespace Akin.Core.Commands
             {
                 MaxResults = maxResults,
                 IncludeSnippets = includeSnippets,
-                MinimumScore = minScore,
+                IncludePaths = includePaths,
+                ExcludePaths = excludePaths,
+                IncludeKinds = includeKinds,
             };
             return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options, _progress);
+        }
+
+        private static FileKind ParseFileKind(string value)
+        {
+            if (!FileKinds.TryParse(value, out FileKind kind))
+                throw new ArgumentException($"Unknown --type value '{value}'. Expected one of: {FileKinds.AcceptedValuesMessage}.");
+            return kind;
         }
     }
 }
