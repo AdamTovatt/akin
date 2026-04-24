@@ -16,6 +16,8 @@ Usage:
   akin search <query> [options]   Search the index
   akin status                     Show index status
   akin reindex                    Force a full reindex
+  akin config                     Show current configuration
+  akin config --set <key> <val>   Update a config setting
   akin --mcp                      Run as MCP server
   akin --version                  Show version
   akin help                       Show this help

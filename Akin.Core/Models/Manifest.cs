@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Akin.Core.Models
 {
     /// <summary>
@@ -6,6 +8,7 @@ namespace Akin.Core.Models
     /// indexer compares the stored manifest to its current configuration and triggers
     /// a full rebuild if anything has changed.
     /// </summary>
+    [JsonConverter(typeof(ManifestJsonConverter))]
     public sealed record Manifest
     {
         /// <summary>
@@ -36,8 +39,9 @@ namespace Akin.Core.Models
         public required string ChunkerFingerprint { get; init; }
 
         /// <summary>
-        /// UTC timestamp of the last full rebuild.
+        /// UTC timestamp of the last time the index was persisted to disk,
+        /// whether from a full rebuild or an incremental update.
         /// </summary>
-        public required DateTime LastRebuiltUtc { get; init; }
+        public required DateTime LastIndexUpdateUtc { get; init; }
     }
 }

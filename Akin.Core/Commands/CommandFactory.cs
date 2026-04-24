@@ -35,6 +35,7 @@ namespace Akin.Core.Commands
                 "search" => BuildSearchFromArgs(args),
                 "status" => CreateStatus(),
                 "reindex" => CreateReindex(),
+                "config" => BuildConfigFromArgs(args),
                 "help" or "--help" or "-h" => new HelpCommand(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'. Run 'akin help' for usage."),
             };
@@ -47,7 +48,7 @@ namespace Akin.Core.Commands
 
         public ICommand CreateStatus()
         {
-            return new StatusCommand(_context.Store, _context.RepoRoot, _context.IndexFolder, _context.IsIndexCompatible());
+            return new StatusCommand(_context.Store, _context.RepoRoot, _context.IndexFolder, _context.IsIndexCompatible(), _context.Config);
         }
 
         public ICommand CreateReindex()
@@ -118,6 +119,29 @@ namespace Akin.Core.Commands
                 IncludeKinds = includeKinds,
             };
             return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options, _progress);
+        }
+
+        private ConfigCommand BuildConfigFromArgs(string[] args)
+        {
+            string? key = null;
+            string? value = null;
+
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i].Equals("--set", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 2 >= args.Length)
+                        throw new ArgumentException("--set requires a key and a value. Usage: akin config --set <key> <value>");
+                    key = args[++i];
+                    value = args[++i];
+                }
+                else
+                {
+                    throw new ArgumentException($"Unknown config argument '{args[i]}'. Usage: akin config [--set <key> <value>]");
+                }
+            }
+
+            return new ConfigCommand(_context.IndexFolder, key, value);
         }
 
         private static FileKind ParseFileKind(string value)

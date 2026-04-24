@@ -10,7 +10,7 @@ namespace Akin.Core.Services
     /// and hand everything to the <see cref="IIndexStore"/>. Neither file I/O nor
     /// chunking lives here — this class is scheduling and coordination only.
     /// </summary>
-    public sealed class Indexer : IIndexer
+    internal sealed class Indexer : IIndexer
     {
         private static readonly TimeSpan DefaultFlushInterval = TimeSpan.FromSeconds(15);
 
@@ -21,6 +21,7 @@ namespace Akin.Core.Services
         private readonly IChunkerSelector _chunkerSelector;
         private readonly string _embeddingModelId;
         private readonly TimeSpan _flushInterval;
+        private readonly CpuThrottle _throttle;
 
         public Indexer(
             IRepoScanner scanner,
@@ -29,6 +30,7 @@ namespace Akin.Core.Services
             EmbeddingService embedder,
             IChunkerSelector chunkerSelector,
             string embeddingModelId,
+            CpuThrottle throttle,
             TimeSpan? flushInterval = null)
         {
             ArgumentNullException.ThrowIfNull(scanner);
@@ -37,6 +39,7 @@ namespace Akin.Core.Services
             ArgumentNullException.ThrowIfNull(embedder);
             ArgumentNullException.ThrowIfNull(chunkerSelector);
             ArgumentException.ThrowIfNullOrWhiteSpace(embeddingModelId);
+            ArgumentNullException.ThrowIfNull(throttle);
 
             _scanner = scanner;
             _fileChunker = fileChunker;
@@ -45,6 +48,7 @@ namespace Akin.Core.Services
             _chunkerSelector = chunkerSelector;
             _embeddingModelId = embeddingModelId;
             _flushInterval = flushInterval ?? DefaultFlushInterval;
+            _throttle = throttle;
         }
 
         public async Task ReindexAllAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -59,7 +63,7 @@ namespace Akin.Core.Services
                 EmbeddingModel = _embeddingModelId,
                 EmbeddingDimension = _embedder.Dimension,
                 ChunkerFingerprint = _chunkerSelector.Fingerprint,
-                LastRebuiltUtc = DateTime.UtcNow,
+                LastIndexUpdateUtc = DateTime.UtcNow,
             };
 
             // Open a batch so each file's write doesn't persist immediately; we
@@ -122,6 +126,8 @@ namespace Akin.Core.Services
                         chunksDone += prepared.Chunks.Count;
                     }
 
+                    await _throttle.ThrottleAsync(cancellationToken);
+
                     if (DateTime.UtcNow - lastFlush >= _flushInterval)
                     {
                         progress?.Report(new IndexProgress
@@ -180,6 +186,9 @@ namespace Akin.Core.Services
             }
 
             await _store.ReplaceFileAsync(relativePath, paired, prepared.Fingerprint, cancellationToken);
+
+            if (_throttle != null)
+                await _throttle.ThrottleAsync(cancellationToken);
         }
 
         /// <summary>
@@ -194,5 +203,6 @@ namespace Akin.Core.Services
         {
             return chunk.EmbeddingText ?? $"{chunk.RelativePath}\n\n{chunk.Text}";
         }
+
     }
 }

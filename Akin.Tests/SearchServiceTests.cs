@@ -58,7 +58,7 @@ namespace Akin.Tests
                 EmbeddingModel = "fake",
                 EmbeddingDimension = Dimension,
                 ChunkerFingerprint = "test",
-                LastRebuiltUtc = DateTime.UtcNow,
+                LastIndexUpdateUtc = DateTime.UtcNow,
             };
 
             await _store.ReplaceAllAsync(manifest, built, fingerprints);

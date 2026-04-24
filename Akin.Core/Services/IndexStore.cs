@@ -50,6 +50,9 @@ namespace Akin.Core.Services
         private const string ManifestFileName = "manifest.json";
         private const string FingerprintsFileName = "fingerprints.json";
 
+        // Manifest uses its own JsonConverter (ManifestJsonConverter) which hardcodes
+        // PascalCase property names. Do not add a PropertyNamingPolicy here without
+        // updating that converter to match.
         private static readonly JsonSerializerOptions JsonOptions = new JsonSerializerOptions
         {
             WriteIndented = false,
@@ -469,6 +472,13 @@ namespace Akin.Core.Services
 
         private async Task PersistLockedAsync(CancellationToken cancellationToken)
         {
+            Manifest? manifest = Volatile.Read(ref _manifest);
+            if (manifest == null)
+                return;
+
+            manifest = manifest with { LastIndexUpdateUtc = DateTime.UtcNow };
+            Volatile.Write(ref _manifest, manifest);
+
             Directory.CreateDirectory(_folderPath);
 
             string tempVectors = _vectorsPath + ".tmp";
@@ -500,7 +510,7 @@ namespace Akin.Core.Services
 
                 await using (FileStream manifestStream = File.Create(tempManifest))
                 {
-                    await JsonSerializer.SerializeAsync(manifestStream, _manifest, JsonOptions, cancellationToken);
+                    await JsonSerializer.SerializeAsync(manifestStream, manifest, JsonOptions, cancellationToken);
                 }
 
                 // Swap in order: vectors, chunks, fingerprints, manifest LAST.

@@ -14,7 +14,7 @@ namespace Akin.Tests
                 EmbeddingModel = "nomic-embed-text-v1.5",
                 EmbeddingDimension = 768,
                 ChunkerFingerprint = "abc123",
-                LastRebuiltUtc = new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc),
+                LastIndexUpdateUtc = new DateTime(2026, 4, 19, 12, 0, 0, DateTimeKind.Utc),
             };
 
             string json = JsonSerializer.Serialize(original);

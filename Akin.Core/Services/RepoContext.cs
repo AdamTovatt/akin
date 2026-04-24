@@ -18,6 +18,7 @@ namespace Akin.Core.Services
 
         public string RepoRoot { get; }
         public string IndexFolder { get; }
+        public AkinConfig Config { get; }
         public EmbeddingService Embedder { get; }
         public IChunkerSelector ChunkerSelector { get; }
         public IRepoScanner Scanner { get; }
@@ -26,9 +27,13 @@ namespace Akin.Core.Services
         public ISearchService SearchService { get; }
         public IndexReconciler Reconciler { get; }
 
+        private readonly CpuThrottle _throttle;
+
         private RepoContext(
             string repoRoot,
             string indexFolder,
+            AkinConfig config,
+            CpuThrottle throttle,
             EmbeddingService embedder,
             IChunkerSelector chunkerSelector,
             IRepoScanner scanner,
@@ -39,6 +44,8 @@ namespace Akin.Core.Services
         {
             RepoRoot = repoRoot;
             IndexFolder = indexFolder;
+            Config = config;
+            _throttle = throttle;
             Embedder = embedder;
             ChunkerSelector = chunkerSelector;
             Scanner = scanner;
@@ -59,6 +66,7 @@ namespace Akin.Core.Services
 
             EmbeddingService? embedder = null;
             IndexStore? store = null;
+            CpuThrottle? throttle = null;
 
             try
             {
@@ -70,21 +78,30 @@ namespace Akin.Core.Services
                 // NomicEmbedProvider.Create() cannot find its model files. BaseDirectory
                 // correctly points to the executable directory for single-file builds
                 // and to the tool's bin folder for `dotnet tool install` deployments.
+                AkinConfig config = await AkinConfig.LoadAsync(indexFolder, cancellationToken);
+                NomicEmbedOptions nomicOptions = new NomicEmbedOptions
+                {
+                    IntraOpNumThreads = config.DerivedIntraOpNumThreads,
+                };
+
                 string modelsDir = Path.Combine(AppContext.BaseDirectory, "Models");
-                embedder = new EmbeddingService(() => NomicEmbedProvider.Create(modelsDir));
+                embedder = new EmbeddingService(() => NomicEmbedProvider.Create(modelsDir, nomicOptions));
                 IChunkerSelector chunkerSelector = new ChunkerSelector();
                 IRepoScanner scanner = new RepoScanner(repoRoot);
                 store = new IndexStore(indexFolder, embedder.Dimension);
                 await store.OpenAsync(cancellationToken);
 
+                throttle = new CpuThrottle(config.MaxCpuPercent);
                 FileChunker fileChunker = new FileChunker(repoRoot, chunkerSelector);
-                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId);
+                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle);
                 ISearchService searchService = new SearchService(embedder, store, chunkerSelector);
                 IndexReconciler reconciler = new IndexReconciler(repoRoot, scanner, store, indexer);
 
                 return new RepoContext(
                     repoRoot,
                     indexFolder,
+                    config,
+                    throttle,
                     embedder,
                     chunkerSelector,
                     scanner,
@@ -95,6 +112,7 @@ namespace Akin.Core.Services
             }
             catch
             {
+                throttle?.Dispose();
                 if (store != null) await store.DisposeAsync();
                 if (embedder != null) await embedder.DisposeAsync();
                 throw;
@@ -142,6 +160,7 @@ namespace Akin.Core.Services
             // all so future replacements don't silently leak.
             await Store.DisposeAsync();
             await Embedder.DisposeAsync();
+            _throttle.Dispose();
             await DisposeIfNeededAsync(Scanner);
             await DisposeIfNeededAsync(ChunkerSelector);
             await DisposeIfNeededAsync(Indexer);

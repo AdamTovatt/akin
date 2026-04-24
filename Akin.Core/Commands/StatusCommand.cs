@@ -15,17 +15,20 @@ namespace Akin.Core.Commands
         private readonly string _repoRoot;
         private readonly string _indexFolder;
         private readonly bool _compatible;
+        private readonly AkinConfig _config;
 
-        public StatusCommand(IIndexStore store, string repoRoot, string indexFolder, bool compatible)
+        public StatusCommand(IIndexStore store, string repoRoot, string indexFolder, bool compatible, AkinConfig config)
         {
             ArgumentNullException.ThrowIfNull(store);
             ArgumentException.ThrowIfNullOrWhiteSpace(repoRoot);
             ArgumentException.ThrowIfNullOrWhiteSpace(indexFolder);
+            ArgumentNullException.ThrowIfNull(config);
 
             _store = store;
             _repoRoot = repoRoot;
             _indexFolder = indexFolder;
             _compatible = compatible;
+            _config = config;
         }
 
         public Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
@@ -44,8 +47,11 @@ namespace Akin.Core.Commands
             {
                 details.Append("Model:            ").AppendLine(status.Manifest.EmbeddingModel);
                 details.Append("Dimension:        ").AppendLine(status.Manifest.EmbeddingDimension.ToString());
-                details.Append("Last rebuilt UTC: ").AppendLine(status.Manifest.LastRebuiltUtc.ToString("u"));
+                details.Append("Last updated UTC: ").AppendLine(status.Manifest.LastIndexUpdateUtc.ToString("u"));
             }
+
+            details.Append("Max CPU:          ").Append(_config.MaxCpuPercent.ToString()).AppendLine("%");
+            details.Append("ONNX threads:     ").AppendLine(_config.DerivedIntraOpNumThreads.ToString());
 
             string message = status.IsReady ? "Index ready." : "Index not built yet.";
             return Task.FromResult(new CommandResult(true, message, details.ToString().TrimEnd()));

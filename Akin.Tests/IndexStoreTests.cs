@@ -30,7 +30,7 @@ namespace Akin.Tests
             EmbeddingModel = "fake",
             EmbeddingDimension = Dimension,
             ChunkerFingerprint = "test",
-            LastRebuiltUtc = DateTime.UtcNow,
+            LastIndexUpdateUtc = DateTime.UtcNow,
         };
 
         private static (ChunkDraft, float[]) MakeEntry(int vectorSlot, string path, int startLine, int endLine, string text)
