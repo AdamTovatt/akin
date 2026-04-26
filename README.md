@@ -141,6 +141,14 @@ When running as an MCP server, the following tools are available:
 - `akin_status()` — Report index state, file and chunk counts, compatibility
 - `akin_reindex()` — Force a full rebuild of the index
 
+### When to use akin vs. grep
+
+Akin and grep are complementary, not alternatives. The right mental model is **akin for discovery, grep for completeness**:
+
+- **Use akin when** you don't yet know the vocabulary the codebase uses. Questions like "how do we handle backwards compatibility" or "where do we deal with rate limiting" are good fits — the concept has no single keyword to grep for.
+- **Use grep when** the concept has a unique, greppable marker: an attribute name (`[JsonPolymorphic]`), a distinctive identifier, an exact error string. Grep is faster and more precise when you already know what to search for.
+- **Combine them.** Semantic ranking has silent recall gaps — a relevant file may be missing from the results without any indication, so don't treat akin's output as exhaustive. A common workflow is akin first to learn the vocabulary (attribute names, doc-comment phrasing, type names), then grep on those terms to enumerate every occurrence.
+
 ## Development
 
 ```bash
