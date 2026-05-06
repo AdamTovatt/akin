@@ -29,7 +29,7 @@
     <ToolCommandName>akin</ToolCommandName>
     <PackageOutputPath>./bin/nupkg</PackageOutputPath>
     <PackageId>Akin</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.4.0</Version>
     <Authors>Adam Tovatt</Authors>
     <Description>Semantic code search tool for AI agents and CLI users. Works as both a CLI tool and MCP server. Uses local ONNX embeddings — no API keys, no external services.</Description>
     <PackageTags>mcp;semantic-search;code-search;cli-tool;mcp-server;claude-code;embeddings</PackageTags>
