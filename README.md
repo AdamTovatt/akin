@@ -64,7 +64,7 @@ For Cursor or other MCP clients, add to your MCP configuration:
 ## Usage
 
 ```bash
-akin search <query> [--max N] [--no-snippets] [--min-score S]   # Semantic search
+akin search <query> [--max N] [--snippets] [--max-per-file N]   # Semantic search
 akin status                                                     # Show index status
 akin reindex                                                    # Force a full reindex
 akin --mcp                                                      # Run as MCP server
@@ -75,17 +75,17 @@ akin help                                                       # Show help
 ### Examples
 
 ```bash
-# Natural-language query across the current repository
+# Natural-language query across the current repository (paths and line ranges only)
 akin search "where do we handle authentication failures"
 
 # Cap the number of files returned
 akin search "database connection pooling" --max 5
 
-# Skip snippet text for a broad survey
-akin search "error handling" --no-snippets
+# Drill in on a focused query — include the chunk text inline
+akin search "error handling" --snippets
 
-# Only surface strong matches
-akin search "cosine similarity" --min-score 0.75
+# Only show the single best match per file (most compact survey)
+akin search "cosine similarity" --max-per-file 1
 
 # Check whether the index is built and current
 akin status
@@ -93,7 +93,7 @@ akin status
 
 ### Search output
 
-Results are grouped by file. Each file carries an aggregate score (the maximum score across its matching chunks) and one or more matching regions with their own line ranges and scores. Pass `--no-snippets` to omit the chunk text, useful when you want file names only for a broad survey.
+Results are grouped by file. Each file carries an aggregate score (the maximum score across its matching chunks) and up to `--max-per-file` matching regions with their own line ranges. Defaults are tuned for cheap survey output: paths and line ranges only (no snippet text), capped at 3 regions per file. Excess matches in a file are summarized as `+N more matches not shown`. Pass `--snippets` for the inline chunk text when drilling in, and raise `--max-per-file` (or set it to 1) to widen or narrow per-file detail.
 
 ## How it works
 
@@ -107,7 +107,7 @@ On startup, Akin compares the stored manifest against its current configuration.
 
 ### Files indexed
 
-Akin runs `git ls-files` to enumerate tracked files, so the set of indexed files exactly matches what you have chosen to version. Binary files are detected by scanning the first 8KB for null bytes and skipped. Files larger than 2MB are skipped.
+Akin runs `git ls-files` to enumerate tracked files, so the set of indexed files exactly matches what you have chosen to version. Binary files are detected by scanning the first 8KB for null bytes and skipped. Files larger than 1MB are skipped.
 
 ### Chunking
 
@@ -137,7 +137,7 @@ akin --mcp
 
 When running as an MCP server, the following tools are available:
 
-- `akin_search(query, maxResults?, includeSnippets?, minimumScore?)` — Semantic code search
+- `akin_search(query, maxResults?, includeSnippets?, maxRegionsPerFile?, paths?, excludePaths?, includeTypes?)` — Semantic code search
 - `akin_status()` — Report index state, file and chunk counts, compatibility
 - `akin_reindex()` — Force a full rebuild of the index
 

@@ -52,11 +52,12 @@ namespace Akin.Core.Commands
             StringBuilder details = new StringBuilder();
             foreach (SearchHit hit in hits)
             {
+                int totalMatches = hit.Regions.Count + hit.TruncatedRegionCount;
                 details.Append(hit.RelativePath)
                        .Append("  (")
-                       .Append(hit.Regions.Count)
+                       .Append(totalMatches)
                        .Append(' ')
-                       .Append(Pluralize.Of(hit.Regions.Count, "match", "matches"))
+                       .Append(Pluralize.Of(totalMatches, "match", "matches"))
                        .AppendLine(")");
 
                 foreach (MatchedRegion region in hit.Regions)
@@ -74,6 +75,16 @@ namespace Akin.Core.Commands
                         }
                     }
                 }
+
+                if (hit.TruncatedRegionCount > 0)
+                {
+                    details.Append("  +")
+                           .Append(hit.TruncatedRegionCount)
+                           .Append(" more ")
+                           .Append(Pluralize.Of(hit.TruncatedRegionCount, "match", "matches"))
+                           .AppendLine(" not shown");
+                }
+
                 details.AppendLine();
             }
 

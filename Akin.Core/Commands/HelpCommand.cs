@@ -24,7 +24,10 @@ Usage:
 
 Search options:
   --max N              Maximum number of files to return (default 10).
-  --no-snippets        Omit chunk text from results; paths and line ranges only.
+  --snippets           Include chunk text inline. Default is paths and line
+                       ranges only (cheaper survey output).
+  --max-per-file N     Cap matched regions returned per file (default 3).
+                       Excess matches are summarized as "+N more matches".
   --path GLOB          Only consider files matching GLOB (repeatable). Supports
                        *, ?, and **. Example: --path "src/**" --path "**/*.cs".
   --exclude GLOB       Exclude files matching GLOB even if they match --path

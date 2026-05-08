@@ -105,14 +105,14 @@ namespace Akin.Tests
         }
 
         [Fact]
-        public async Task SearchAsync_IncludeSnippetsFalse_ReturnsRegionsWithoutText()
+        public async Task SearchAsync_IncludeSnippetsTrue_ReturnsRegionsWithChunkText()
         {
             await SeedAsync(("a.cs", 1, 10, "alpha beta gamma"));
 
-            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions { IncludeSnippets = false });
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions { IncludeSnippets = true });
 
             Assert.Single(hits);
-            Assert.All(hits[0].Regions, r => Assert.Null(r.Snippet));
+            Assert.All(hits[0].Regions, r => Assert.Equal("alpha beta gamma", r.Snippet));
         }
 
         [Fact]
@@ -278,6 +278,77 @@ namespace Akin.Tests
             });
 
             Assert.Empty(hits);
+        }
+
+        [Fact]
+        public async Task SearchAsync_DefaultOptions_ReturnsNoSnippets()
+        {
+            await SeedAsync(("a.cs", 1, 10, "alpha beta gamma"));
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions());
+
+            Assert.Single(hits);
+            Assert.All(hits[0].Regions, r => Assert.Null(r.Snippet));
+        }
+
+        [Fact]
+        public async Task SearchAsync_MaxRegionsPerFile_CapsRegionsAndReportsTruncated()
+        {
+            await SeedAsync(
+                ("a.cs", 1, 5, "alpha beta one"),
+                ("a.cs", 10, 15, "alpha beta two"),
+                ("a.cs", 20, 25, "alpha beta three"),
+                ("a.cs", 30, 35, "alpha beta four"),
+                ("a.cs", 40, 45, "alpha beta five")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions());
+
+            Assert.Single(hits);
+            Assert.Equal(3, hits[0].Regions.Count);
+            Assert.Equal(2, hits[0].TruncatedRegionCount);
+        }
+
+        [Fact]
+        public async Task SearchAsync_MaxRegionsPerFile_NoTruncationWhenUnderLimit()
+        {
+            await SeedAsync(
+                ("a.cs", 1, 5, "alpha beta one"),
+                ("a.cs", 10, 15, "alpha beta two")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions());
+
+            Assert.Single(hits);
+            Assert.Equal(2, hits[0].Regions.Count);
+            Assert.Equal(0, hits[0].TruncatedRegionCount);
+        }
+
+        [Fact]
+        public async Task SearchAsync_MaxRegionsPerFile_KeepsTopScoringRegions()
+        {
+            await SeedAsync(
+                ("a.cs", 1, 5, "alpha beta"),
+                ("a.cs", 10, 15, "completely different junk"),
+                ("a.cs", 20, 25, "more unrelated content")
+            );
+
+            IReadOnlyList<SearchHit> hits = await _searcher.SearchAsync("alpha beta", new SearchOptions
+            {
+                MaxRegionsPerFile = 1,
+            });
+
+            Assert.Single(hits);
+            Assert.Single(hits[0].Regions);
+            Assert.Equal(1, hits[0].Regions[0].StartLine);
+            Assert.Equal(2, hits[0].TruncatedRegionCount);
+        }
+
+        [Fact]
+        public async Task SearchAsync_MaxRegionsPerFile_ZeroThrows()
+        {
+            await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() =>
+                _searcher.SearchAsync("alpha", new SearchOptions { MaxRegionsPerFile = 0 }));
         }
     }
 }

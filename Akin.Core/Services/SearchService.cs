@@ -29,6 +29,7 @@ namespace Akin.Core.Services
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(query);
             ArgumentNullException.ThrowIfNull(options);
+            ArgumentOutOfRangeException.ThrowIfLessThan(options.MaxRegionsPerFile, 1);
 
             if (!_store.IsReady || _store.ChunkCount == 0)
                 return Array.Empty<SearchHit>();
@@ -65,11 +66,19 @@ namespace Akin.Core.Services
                 List<MatchedRegion> merged = MergeRegions(pair.Value);
                 merged.Sort((a, b) => b.Score.CompareTo(a.Score));
 
+                int truncated = 0;
+                if (merged.Count > options.MaxRegionsPerFile)
+                {
+                    truncated = merged.Count - options.MaxRegionsPerFile;
+                    merged.RemoveRange(options.MaxRegionsPerFile, truncated);
+                }
+
                 hits.Add(new SearchHit
                 {
                     RelativePath = pair.Key,
                     AggregateScore = merged[0].Score,
                     Regions = merged,
+                    TruncatedRegionCount = truncated,
                 });
             }
 

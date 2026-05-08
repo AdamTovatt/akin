@@ -13,9 +13,20 @@ namespace Akin.Core.Models
 
         /// <summary>
         /// When true, each matching region carries the full chunk text. When false,
-        /// regions only include path, line range, and score. Defaults to true.
+        /// regions only include path, line range, and score. Defaults to false so
+        /// the survey-first workflow stays cheap; callers asking a focused
+        /// follow-up should opt in by setting this to true.
         /// </summary>
-        public bool IncludeSnippets { get; init; } = true;
+        public bool IncludeSnippets { get; init; } = false;
+
+        /// <summary>
+        /// Maximum number of matched regions returned per file. Regions are sorted
+        /// by descending score before the cap is applied, so the highest-scoring
+        /// matches survive. Any regions dropped are reported via
+        /// <see cref="SearchHit.TruncatedRegionCount"/> so callers can render an
+        /// overflow summary. Must be at least 1.
+        /// </summary>
+        public int MaxRegionsPerFile { get; init; } = 3;
 
         /// <summary>
         /// Glob patterns (relative to the repository root) that a file's path must

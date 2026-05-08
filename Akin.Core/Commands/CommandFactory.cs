@@ -59,11 +59,12 @@ namespace Akin.Core.Commands
         private SearchCommand BuildSearchFromArgs(string[] args)
         {
             if (args.Length < 2)
-                throw new ArgumentException("Usage: akin search <query> [--max N] [--no-snippets] [--path GLOB] [--exclude GLOB] [--type KIND]");
+                throw new ArgumentException("Search requires a query string. Run 'akin help' for usage.");
 
             List<string> queryParts = new List<string>();
             int maxResults = 10;
-            bool includeSnippets = true;
+            bool includeSnippets = false;
+            int maxRegionsPerFile = 3;
             List<string> includePaths = new List<string>();
             List<string> excludePaths = new List<string>();
             List<FileKind> includeKinds = new List<FileKind>();
@@ -78,9 +79,16 @@ namespace Akin.Core.Commands
                     if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out maxResults) || maxResults <= 0)
                         throw new ArgumentException("--max must be a positive integer.");
                 }
-                else if (arg.Equals("--no-snippets", StringComparison.OrdinalIgnoreCase))
+                else if (arg.Equals("--snippets", StringComparison.OrdinalIgnoreCase))
                 {
-                    includeSnippets = false;
+                    includeSnippets = true;
+                }
+                else if (arg.Equals("--max-per-file", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (i + 1 >= args.Length)
+                        throw new ArgumentException("--max-per-file requires a value.");
+                    if (!int.TryParse(args[++i], NumberStyles.Integer, CultureInfo.InvariantCulture, out maxRegionsPerFile) || maxRegionsPerFile <= 0)
+                        throw new ArgumentException("--max-per-file must be a positive integer.");
                 }
                 else if (arg.Equals("--path", StringComparison.OrdinalIgnoreCase))
                 {
@@ -100,6 +108,10 @@ namespace Akin.Core.Commands
                         throw new ArgumentException("--type requires a value (code, docs, or config).");
                     includeKinds.Add(ParseFileKind(args[++i]));
                 }
+                else if (arg.StartsWith("--", StringComparison.Ordinal))
+                {
+                    throw new ArgumentException($"Unknown search option '{arg}'. Run 'akin help' for usage.");
+                }
                 else
                 {
                     queryParts.Add(arg);
@@ -114,6 +126,7 @@ namespace Akin.Core.Commands
             {
                 MaxResults = maxResults,
                 IncludeSnippets = includeSnippets,
+                MaxRegionsPerFile = maxRegionsPerFile,
                 IncludePaths = includePaths,
                 ExcludePaths = excludePaths,
                 IncludeKinds = includeKinds,
