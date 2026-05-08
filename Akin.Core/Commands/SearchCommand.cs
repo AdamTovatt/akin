@@ -52,44 +52,48 @@ namespace Akin.Core.Commands
             StringBuilder details = new StringBuilder();
             foreach (SearchHit hit in hits)
             {
-                int totalMatches = hit.Regions.Count + hit.TruncatedRegionCount;
-                details.Append(hit.RelativePath)
-                       .Append("  (")
-                       .Append(totalMatches)
-                       .Append(' ')
-                       .Append(Pluralize.Of(totalMatches, "match", "matches"))
-                       .AppendLine(")");
-
-                foreach (MatchedRegion region in hit.Regions)
-                {
-                    details.Append("  lines ")
-                           .Append(region.StartLine)
-                           .Append('-')
-                           .AppendLine(region.EndLine.ToString());
-
-                    if (region.Snippet != null)
-                    {
-                        foreach (string line in region.Snippet.Split('\n'))
-                        {
-                            details.Append("    ").AppendLine(line.TrimEnd('\r'));
-                        }
-                    }
-                }
-
-                if (hit.TruncatedRegionCount > 0)
-                {
-                    details.Append("  +")
-                           .Append(hit.TruncatedRegionCount)
-                           .Append(" more ")
-                           .Append(Pluralize.Of(hit.TruncatedRegionCount, "match", "matches"))
-                           .AppendLine(" not shown");
-                }
-
-                details.AppendLine();
+                AppendHit(details, hit);
             }
 
             string message = $"{hits.Count} {Pluralize.Of(hits.Count, "hit")}.";
             return new CommandResult(true, message, details.ToString().TrimEnd());
+        }
+
+        private static void AppendHit(StringBuilder details, SearchHit hit)
+        {
+            details.Append(hit.RelativePath)
+                   .Append("  (")
+                   .Append(hit.TotalMatchCount)
+                   .Append(' ')
+                   .Append(Pluralize.Of(hit.TotalMatchCount, "match", "matches"))
+                   .AppendLine(")");
+
+            foreach (MatchedRegion region in hit.Regions)
+            {
+                details.Append("  lines ")
+                       .Append(region.StartLine)
+                       .Append('-')
+                       .AppendLine(region.EndLine.ToString());
+
+                if (region.Snippet != null)
+                {
+                    foreach (string line in region.Snippet.Split('\n'))
+                    {
+                        details.Append("    ").AppendLine(line.TrimEnd('\r'));
+                    }
+                }
+            }
+
+            if (hit.TruncatedRegionCount > 0)
+            {
+                details.Append("  +")
+                       .Append(hit.TruncatedRegionCount)
+                       .Append(" more ")
+                       .Append(Pluralize.Of(hit.TruncatedRegionCount, "match", "matches"))
+                       .AppendLine(" not shown");
+            }
+
+            details.AppendLine();
         }
     }
 }

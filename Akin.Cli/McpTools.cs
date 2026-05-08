@@ -22,16 +22,24 @@ namespace Akin.Cli
         }
 
         [McpServerTool(Name = "akin_search")]
-        [Description("Semantic code search over the current repository. Returns ranked files with line ranges and optional code snippets.\n\nBest for discovery — finding files when you don't yet know the vocabulary the codebase uses (e.g. \"how do we handle backwards compatibility\", \"where do we deal with rate limiting\", \"what's our pattern for background jobs\"). Use grep instead when the concept has a unique greppable marker — an attribute name, a distinctive identifier, an exact error string — since grep is faster and more precise when you already know what to search for.\n\nCombine with grep for completeness. Semantic ranking has silent recall gaps: a relevant file may be missing from the results without any indication. Treat akin's output as a starting set, not exhaustive. A common workflow is akin first to learn the vocabulary the codebase uses (attribute names, doc-comment phrasing, type names), then grep on those terms to enumerate every occurrence. Expect some noise in broad queries — generated files or large schemas can rank alongside genuine matches; scope with paths/excludePaths/includeTypes when possible.\n\nDefaults are tuned for broad surveys: paths and line ranges only (no snippet text), capped at 3 regions per file (overflow rendered as \"+N more matches not shown\"). For focused follow-ups, pass includeSnippets=true to get the chunk text inline. Raise maxRegionsPerFile when you genuinely need every match in a file, or set it to 1 for the most compact \"one representative match per file\" survey. Scope further with paths/excludePaths (glob patterns) and/or includeTypes (file categories: \"code\", \"docs\", \"config\").")]
+        [Description("""
+            Semantic code search over the current repository. Returns ranked files with line ranges and optional code snippets.
+
+            Best for discovery — finding files when you don't yet know the vocabulary the codebase uses (e.g. "how do we handle backwards compatibility", "where do we deal with rate limiting", "what's our pattern for background jobs"). Use grep instead when the concept has a unique greppable marker — an attribute name, a distinctive identifier, an exact error string — since grep is faster and more precise when you already know what to search for.
+
+            Combine with grep for completeness. Semantic ranking has silent recall gaps: a relevant file may be missing from the results without any indication. Treat akin's output as a starting set, not exhaustive. A common workflow is akin first to learn the vocabulary the codebase uses (attribute names, doc-comment phrasing, type names), then grep on those terms to enumerate every occurrence. Expect some noise in broad queries — generated files or large schemas can rank alongside genuine matches; scope with paths/excludePaths/includeTypes when possible.
+
+            Defaults are tuned for broad surveys: paths and line ranges only (no snippet text), capped at 3 regions per file (overflow rendered as "+N more matches not shown"). For focused follow-ups, pass includeSnippets=true to get the chunk text inline. Raise maxRegionsPerFile when you genuinely need every match in a file, or set it to 1 for the most compact "one representative match per file" survey. Scope further with paths/excludePaths (glob patterns) and/or includeTypes (file categories: "code", "docs", "config").
+            """)]
         public async Task<string> SearchAsync(
             [Description("The natural-language or keyword query describing what to find.")]
             string query,
             [Description("Maximum number of files to return. Default 10.")]
-            int maxResults = 10,
+            int maxResults = SearchOptions.DefaultMaxResults,
             [Description("When true, each matching region includes the chunk text. When false, only paths and line ranges are returned. Default false (survey-first).")]
-            bool includeSnippets = false,
+            bool includeSnippets = SearchOptions.DefaultIncludeSnippets,
             [Description("Maximum matched regions returned per file, sorted by score before the cap. Excess regions are summarized as \"+N more matches not shown\". Default 3. Must be at least 1.")]
-            int maxRegionsPerFile = 3,
+            int maxRegionsPerFile = SearchOptions.DefaultMaxRegionsPerFile,
             [Description("Optional glob patterns (relative to repo root) restricting search to matching files. Supports *, ?, and **. Example: [\"src/**\", \"**/*.cs\"].")]
             string[]? paths = null,
             [Description("Optional glob patterns (relative to repo root) excluding matching files even if they also match a paths pattern. Example: [\"**/*.test.*\", \"**/node_modules/**\"].")]

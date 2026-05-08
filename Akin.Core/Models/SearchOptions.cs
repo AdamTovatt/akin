@@ -5,11 +5,20 @@ namespace Akin.Core.Models
     /// </summary>
     public sealed record SearchOptions
     {
+        /// <summary>Default value for <see cref="MaxResults"/>.</summary>
+        public const int DefaultMaxResults = 10;
+
+        /// <summary>Default value for <see cref="IncludeSnippets"/>.</summary>
+        public const bool DefaultIncludeSnippets = false;
+
+        /// <summary>Default value for <see cref="MaxRegionsPerFile"/>.</summary>
+        public const int DefaultMaxRegionsPerFile = 3;
+
         /// <summary>
         /// The maximum number of files to return. Chunks are grouped by file after
         /// retrieval, so the underlying vector search pulls a larger candidate pool.
         /// </summary>
-        public int MaxResults { get; init; } = 10;
+        public int MaxResults { get; init; } = DefaultMaxResults;
 
         /// <summary>
         /// When true, each matching region carries the full chunk text. When false,
@@ -17,7 +26,7 @@ namespace Akin.Core.Models
         /// the survey-first workflow stays cheap; callers asking a focused
         /// follow-up should opt in by setting this to true.
         /// </summary>
-        public bool IncludeSnippets { get; init; } = false;
+        public bool IncludeSnippets { get; init; } = DefaultIncludeSnippets;
 
         /// <summary>
         /// Maximum number of matched regions returned per file. Regions are sorted
@@ -26,7 +35,7 @@ namespace Akin.Core.Models
         /// <see cref="SearchHit.TruncatedRegionCount"/> so callers can render an
         /// overflow summary. Must be at least 1.
         /// </summary>
-        public int MaxRegionsPerFile { get; init; } = 3;
+        public int MaxRegionsPerFile { get; init; } = DefaultMaxRegionsPerFile;
 
         /// <summary>
         /// Glob patterns (relative to the repository root) that a file's path must

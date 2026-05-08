@@ -62,9 +62,9 @@ namespace Akin.Core.Commands
                 throw new ArgumentException("Search requires a query string. Run 'akin help' for usage.");
 
             List<string> queryParts = new List<string>();
-            int maxResults = 10;
-            bool includeSnippets = false;
-            int maxRegionsPerFile = 3;
+            int maxResults = SearchOptions.DefaultMaxResults;
+            bool includeSnippets = SearchOptions.DefaultIncludeSnippets;
+            int maxRegionsPerFile = SearchOptions.DefaultMaxRegionsPerFile;
             List<string> includePaths = new List<string>();
             List<string> excludePaths = new List<string>();
             List<FileKind> includeKinds = new List<FileKind>();

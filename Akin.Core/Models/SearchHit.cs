@@ -27,5 +27,12 @@ namespace Akin.Core.Models
         /// no truncation occurred.
         /// </summary>
         public int TruncatedRegionCount { get; init; }
+
+        /// <summary>
+        /// The total number of matched regions in this file before truncation —
+        /// the count of regions that would have been returned if no per-file cap
+        /// were applied. Equals <c>Regions.Count + TruncatedRegionCount</c>.
+        /// </summary>
+        public int TotalMatchCount => Regions.Count + TruncatedRegionCount;
     }
 }
