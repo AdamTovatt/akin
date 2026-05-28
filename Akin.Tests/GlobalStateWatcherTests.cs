@@ -53,14 +53,16 @@ namespace Akin.Tests
         }
 
         [Fact]
-        public async Task IsPausedAsync_AfterRefreshInterval_ReReadsFromDisk()
+        public async Task IsPausedAsync_WhenCacheExpired_ReReadsFromDisk()
         {
+            // A zero refresh interval makes every read stale, so the watcher
+            // always re-reads from disk. This exercises the cache-expiry path
+            // deterministically, without depending on wall-clock timing.
             await WriteStateAsync(paused: true);
-            GlobalStateWatcher watcher = new GlobalStateWatcher(_stateFolder, TimeSpan.FromMilliseconds(50));
+            GlobalStateWatcher watcher = new GlobalStateWatcher(_stateFolder, TimeSpan.Zero);
             Assert.True(await watcher.IsPausedAsync());
 
             await WriteStateAsync(paused: false);
-            await Task.Delay(200);
 
             Assert.False(await watcher.IsPausedAsync());
         }

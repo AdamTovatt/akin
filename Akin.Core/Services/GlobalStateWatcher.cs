@@ -24,7 +24,6 @@ namespace Akin.Core.Services
 
         private GlobalState _cached = new GlobalState();
         private DateTime _cachedAtUtc = DateTime.MinValue;
-        private Task<GlobalState>? _inFlight;
 
         public GlobalStateWatcher()
             : this(GlobalState.DefaultStateFolder, PollInterval)
@@ -41,44 +40,28 @@ namespace Akin.Core.Services
 
         /// <summary>
         /// Returns whether background indexing should currently be paused.
-        /// Reads from a short-lived cache; refreshes from disk when stale.
+        /// Serves a value cached within the refresh interval; otherwise reads
+        /// from disk. The state file is tiny and the result idempotent, so if
+        /// two callers race a stale read they simply both load it once — no
+        /// in-flight deduplication is needed.
         /// </summary>
         public async Task<bool> IsPausedAsync(CancellationToken cancellationToken = default)
-        {
-            GlobalState state = await GetStateAsync(cancellationToken);
-            return state.IndexingPaused;
-        }
-
-        private Task<GlobalState> GetStateAsync(CancellationToken cancellationToken)
         {
             lock (_gate)
             {
                 if (DateTime.UtcNow - _cachedAtUtc < _refreshInterval)
-                    return Task.FromResult(_cached);
+                    return _cached.IndexingPaused;
+            }
 
-                _inFlight ??= RefreshAsync(cancellationToken);
-                return _inFlight;
-            }
-        }
+            GlobalState fresh = await GlobalState.LoadAsync(_stateFolder, cancellationToken);
 
-        private async Task<GlobalState> RefreshAsync(CancellationToken cancellationToken)
-        {
-            try
+            lock (_gate)
             {
-                GlobalState fresh = await GlobalState.LoadAsync(_stateFolder, cancellationToken);
-                lock (_gate)
-                {
-                    _cached = fresh;
-                    _cachedAtUtc = DateTime.UtcNow;
-                    _inFlight = null;
-                }
-                return fresh;
+                _cached = fresh;
+                _cachedAtUtc = DateTime.UtcNow;
             }
-            catch
-            {
-                lock (_gate) { _inFlight = null; }
-                throw;
-            }
+
+            return fresh.IndexingPaused;
         }
     }
 }
