@@ -12,15 +12,23 @@ namespace Akin.Core.Commands
     /// </summary>
     public sealed class ResumeCommand : ICommand
     {
+        private readonly string _stateFolder;
+
+        public ResumeCommand(string stateFolder)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(stateFolder);
+            _stateFolder = stateFolder;
+        }
+
         public async Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
         {
-            GlobalState current = await GlobalState.LoadAsync(cancellationToken);
+            GlobalState current = await GlobalState.LoadAsync(_stateFolder, cancellationToken);
 
             if (!current.IndexingPaused)
                 return new CommandResult(true, "Indexing already active.");
 
             GlobalState updated = current with { IndexingPaused = false };
-            await updated.SaveAsync(cancellationToken);
+            await updated.SaveAsync(_stateFolder, cancellationToken);
             return new CommandResult(true, "Indexing resumed. Running MCP servers will catch up on any missed changes.");
         }
     }

@@ -22,7 +22,7 @@ namespace Akin.Core.Services
         private readonly string _embeddingModelId;
         private readonly TimeSpan _flushInterval;
         private readonly CpuThrottle _throttle;
-        private readonly GlobalStateWatcher _globalState;
+        private readonly IGlobalStateWatcher _globalState;
 
         public Indexer(
             IRepoScanner scanner,
@@ -32,7 +32,7 @@ namespace Akin.Core.Services
             IChunkerSelector chunkerSelector,
             string embeddingModelId,
             CpuThrottle throttle,
-            GlobalStateWatcher globalState,
+            IGlobalStateWatcher globalState,
             TimeSpan? flushInterval = null)
         {
             ArgumentNullException.ThrowIfNull(scanner);

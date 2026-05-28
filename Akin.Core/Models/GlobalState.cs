@@ -30,30 +30,24 @@ namespace Akin.Core.Models
         public bool IndexingPaused { get; init; }
 
         /// <summary>
-        /// Returns the folder that holds machine-wide akin state for the
-        /// current user. Created on demand by callers that write to it.
+        /// The folder that holds machine-wide akin state for the current user
+        /// (<c>~/.akin</c> on Linux/macOS). Resolved at runtime rather than
+        /// hardcoded so it adapts to the host and so tests can pass a temp
+        /// folder instead.
         /// </summary>
-        public static string GetStateFolder()
-        {
-            string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            return Path.Combine(home, ".akin");
-        }
+        public static string DefaultStateFolder =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".akin");
 
         /// <summary>
-        /// Returns the path to <c>state.json</c> in the user's akin folder.
+        /// Loads the current global state from <c>state.json</c> in the given
+        /// folder. Returns defaults (indexing active) when the file is absent
+        /// or unreadable.
         /// </summary>
-        public static string GetStatePath()
+        public static async Task<GlobalState> LoadAsync(string stateFolder, CancellationToken cancellationToken = default)
         {
-            return Path.Combine(GetStateFolder(), "state.json");
-        }
+            ArgumentException.ThrowIfNullOrWhiteSpace(stateFolder);
 
-        /// <summary>
-        /// Loads the current global state. Returns defaults (indexing active)
-        /// when the file is absent or unreadable.
-        /// </summary>
-        public static async Task<GlobalState> LoadAsync(CancellationToken cancellationToken = default)
-        {
-            string path = GetStatePath();
+            string path = Path.Combine(stateFolder, "state.json");
 
             if (!File.Exists(path))
                 return new GlobalState();
@@ -71,12 +65,14 @@ namespace Akin.Core.Models
         }
 
         /// <summary>
-        /// Persists this state to <c>~/.akin/state.json</c>.
+        /// Persists this state to <c>state.json</c> in the given folder.
         /// </summary>
-        public async Task SaveAsync(CancellationToken cancellationToken = default)
+        public async Task SaveAsync(string stateFolder, CancellationToken cancellationToken = default)
         {
-            Directory.CreateDirectory(GetStateFolder());
-            string path = GetStatePath();
+            ArgumentException.ThrowIfNullOrWhiteSpace(stateFolder);
+
+            Directory.CreateDirectory(stateFolder);
+            string path = Path.Combine(stateFolder, "state.json");
             string tempPath = path + ".tmp";
 
             // Write to a sibling temp file then rename over the target so a

@@ -26,7 +26,7 @@ namespace Akin.Core.Services
         public IIndexer Indexer { get; }
         public ISearchService SearchService { get; }
         public IndexReconciler Reconciler { get; }
-        public GlobalStateWatcher GlobalState { get; }
+        public IGlobalStateWatcher GlobalStateWatcher { get; }
 
         private readonly CpuThrottle _throttle;
 
@@ -42,7 +42,7 @@ namespace Akin.Core.Services
             IIndexer indexer,
             ISearchService searchService,
             IndexReconciler reconciler,
-            GlobalStateWatcher globalState)
+            IGlobalStateWatcher globalStateWatcher)
         {
             RepoRoot = repoRoot;
             IndexFolder = indexFolder;
@@ -55,7 +55,7 @@ namespace Akin.Core.Services
             Indexer = indexer;
             SearchService = searchService;
             Reconciler = reconciler;
-            GlobalState = globalState;
+            GlobalStateWatcher = globalStateWatcher;
         }
 
         /// <summary>
@@ -95,9 +95,9 @@ namespace Akin.Core.Services
                 await store.OpenAsync(cancellationToken);
 
                 throttle = new CpuThrottle(config.MaxCpuPercent);
-                GlobalStateWatcher globalState = new GlobalStateWatcher();
+                GlobalStateWatcher globalStateWatcher = new GlobalStateWatcher();
                 FileChunker fileChunker = new FileChunker(repoRoot, chunkerSelector);
-                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle, globalState);
+                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle, globalStateWatcher);
                 ISearchService searchService = new SearchService(embedder, store, chunkerSelector);
                 IndexReconciler reconciler = new IndexReconciler(repoRoot, scanner, store, indexer);
 
@@ -113,7 +113,7 @@ namespace Akin.Core.Services
                     indexer,
                     searchService,
                     reconciler,
-                    globalState);
+                    globalStateWatcher);
             }
             catch
             {

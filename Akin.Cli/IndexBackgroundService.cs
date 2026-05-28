@@ -191,7 +191,7 @@ namespace Akin.Cli
         private async Task WaitWhilePausedAsync(CancellationToken cancellationToken)
         {
             bool loggedPause = false;
-            while (await _context.GlobalState.IsPausedAsync(cancellationToken))
+            while (await _context.GlobalStateWatcher.IsPausedAsync(cancellationToken))
             {
                 if (!loggedPause)
                 {

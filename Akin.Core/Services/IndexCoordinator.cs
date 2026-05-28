@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Akin.Core.Interfaces;
 
 namespace Akin.Core.Services
 {
@@ -18,7 +19,7 @@ namespace Akin.Core.Services
         private readonly TimeSpan _flushInterval;
         private readonly TimeSpan _reconciliationInterval;
         private readonly Action<string, Exception> _reportError;
-        private readonly GlobalStateWatcher _globalState;
+        private readonly IGlobalStateWatcher _globalState;
 
         private readonly FileSystemWatcher _watcher;
         private readonly ConcurrentDictionary<string, byte> _pending = new ConcurrentDictionary<string, byte>();
@@ -37,7 +38,7 @@ namespace Akin.Core.Services
             TimeSpan flushInterval,
             TimeSpan reconciliationInterval,
             Action<string, Exception> reportError,
-            GlobalStateWatcher globalState)
+            IGlobalStateWatcher globalState)
         {
             _context = context;
             _flushInterval = flushInterval;
@@ -56,7 +57,7 @@ namespace Akin.Core.Services
         public static async Task<IndexCoordinator> StartAsync(RepoContext context, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(context);
-            return await StartAsync(context, DefaultFlushInterval, DefaultReconciliationInterval, reportError: null, globalState: context.GlobalState, cancellationToken);
+            return await StartAsync(context, DefaultFlushInterval, DefaultReconciliationInterval, reportError: null, globalState: context.GlobalStateWatcher, cancellationToken);
         }
 
         public static async Task<IndexCoordinator> StartAsync(
@@ -64,13 +65,13 @@ namespace Akin.Core.Services
             TimeSpan flushInterval,
             TimeSpan reconciliationInterval,
             Action<string, Exception>? reportError = null,
-            GlobalStateWatcher? globalState = null,
+            IGlobalStateWatcher? globalState = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(context);
 
             Action<string, Exception> effectiveReport = reportError ?? DefaultReport;
-            GlobalStateWatcher effectiveGlobalState = globalState ?? context.GlobalState;
+            IGlobalStateWatcher effectiveGlobalState = globalState ?? context.GlobalStateWatcher;
 
             IndexCoordinator coordinator = new IndexCoordinator(context, flushInterval, reconciliationInterval, effectiveReport, effectiveGlobalState);
             await coordinator.RefreshTrackedSetAsync(cancellationToken);

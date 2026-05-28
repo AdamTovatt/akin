@@ -36,8 +36,8 @@ namespace Akin.Core.Commands
                 "status" => CreateStatus(),
                 "reindex" => CreateReindex(),
                 "config" => BuildConfigFromArgs(args),
-                "pause" => new PauseCommand(),
-                "resume" => new ResumeCommand(),
+                "pause" => new PauseCommand(GlobalState.DefaultStateFolder),
+                "resume" => new ResumeCommand(GlobalState.DefaultStateFolder),
                 "help" or "--help" or "-h" => new HelpCommand(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'. Run 'akin help' for usage."),
             };
@@ -50,7 +50,7 @@ namespace Akin.Core.Commands
 
         public ICommand CreateStatus()
         {
-            return new StatusCommand(_context.Store, _context.RepoRoot, _context.IndexFolder, _context.IsIndexCompatible(), _context.Config);
+            return new StatusCommand(_context.Store, _context.RepoRoot, _context.IndexFolder, _context.IsIndexCompatible(), _context.Config, _context.GlobalStateWatcher);
         }
 
         public ICommand CreateReindex()

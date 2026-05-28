@@ -1,3 +1,4 @@
+using Akin.Core.Interfaces;
 using Akin.Core.Models;
 
 namespace Akin.Core.Services
@@ -5,9 +6,9 @@ namespace Akin.Core.Services
     /// <summary>
     /// Caches the most recently observed <see cref="GlobalState"/> for a short
     /// window so the indexing loops can cheaply check whether they should pause
-    /// without re-reading <c>~/.akin/state.json</c> on every tick.
+    /// without re-reading <c>state.json</c> on every tick.
     /// </summary>
-    public sealed class GlobalStateWatcher
+    public sealed class GlobalStateWatcher : IGlobalStateWatcher
     {
         /// <summary>
         /// How long a read of the global state is cached before the next access
@@ -17,6 +18,7 @@ namespace Akin.Core.Services
         /// </summary>
         public static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
 
+        private readonly string _stateFolder;
         private readonly TimeSpan _refreshInterval;
         private readonly object _gate = new object();
 
@@ -25,13 +27,16 @@ namespace Akin.Core.Services
         private Task<GlobalState>? _inFlight;
 
         public GlobalStateWatcher()
-            : this(PollInterval)
+            : this(GlobalState.DefaultStateFolder, PollInterval)
         {
         }
 
-        public GlobalStateWatcher(TimeSpan refreshInterval)
+        public GlobalStateWatcher(string stateFolder, TimeSpan? refreshInterval = null)
         {
-            _refreshInterval = refreshInterval;
+            ArgumentException.ThrowIfNullOrWhiteSpace(stateFolder);
+
+            _stateFolder = stateFolder;
+            _refreshInterval = refreshInterval ?? PollInterval;
         }
 
         /// <summary>
@@ -60,7 +65,7 @@ namespace Akin.Core.Services
         {
             try
             {
-                GlobalState fresh = await GlobalState.LoadAsync(cancellationToken);
+                GlobalState fresh = await GlobalState.LoadAsync(_stateFolder, cancellationToken);
                 lock (_gate)
                 {
                     _cached = fresh;
