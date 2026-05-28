@@ -18,6 +18,7 @@ namespace Akin.Core.Services
         private readonly TimeSpan _flushInterval;
         private readonly TimeSpan _reconciliationInterval;
         private readonly Action<string, Exception> _reportError;
+        private readonly GlobalStateWatcher _globalState;
 
         private readonly FileSystemWatcher _watcher;
         private readonly ConcurrentDictionary<string, byte> _pending = new ConcurrentDictionary<string, byte>();
@@ -35,12 +36,14 @@ namespace Akin.Core.Services
             RepoContext context,
             TimeSpan flushInterval,
             TimeSpan reconciliationInterval,
-            Action<string, Exception> reportError)
+            Action<string, Exception> reportError,
+            GlobalStateWatcher globalState)
         {
             _context = context;
             _flushInterval = flushInterval;
             _reconciliationInterval = reconciliationInterval;
             _reportError = reportError;
+            _globalState = globalState;
 
             _watcher = new FileSystemWatcher(context.RepoRoot)
             {
@@ -52,7 +55,8 @@ namespace Akin.Core.Services
 
         public static async Task<IndexCoordinator> StartAsync(RepoContext context, CancellationToken cancellationToken = default)
         {
-            return await StartAsync(context, DefaultFlushInterval, DefaultReconciliationInterval, reportError: null, cancellationToken);
+            ArgumentNullException.ThrowIfNull(context);
+            return await StartAsync(context, DefaultFlushInterval, DefaultReconciliationInterval, reportError: null, globalState: context.GlobalState, cancellationToken);
         }
 
         public static async Task<IndexCoordinator> StartAsync(
@@ -60,13 +64,15 @@ namespace Akin.Core.Services
             TimeSpan flushInterval,
             TimeSpan reconciliationInterval,
             Action<string, Exception>? reportError = null,
+            GlobalStateWatcher? globalState = null,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(context);
 
             Action<string, Exception> effectiveReport = reportError ?? DefaultReport;
+            GlobalStateWatcher effectiveGlobalState = globalState ?? context.GlobalState;
 
-            IndexCoordinator coordinator = new IndexCoordinator(context, flushInterval, reconciliationInterval, effectiveReport);
+            IndexCoordinator coordinator = new IndexCoordinator(context, flushInterval, reconciliationInterval, effectiveReport, effectiveGlobalState);
             await coordinator.RefreshTrackedSetAsync(cancellationToken);
             coordinator.AttachHandlers();
             coordinator._watcher.EnableRaisingEvents = true;
@@ -163,6 +169,13 @@ namespace Akin.Core.Services
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
                 {
+                    // While paused, leave pending events in the queue so the
+                    // next flush tick after resume drains them. We can't rely on
+                    // the OS watcher buffer to survive a long pause, so events
+                    // already captured must stay queued rather than be dropped.
+                    if (await _globalState.IsPausedAsync(cancellationToken))
+                        continue;
+
                     string[] batch = _pending.Keys.ToArray();
                     foreach (string key in batch)
                     {
@@ -210,6 +223,9 @@ namespace Akin.Core.Services
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
                 {
+                    if (await _globalState.IsPausedAsync(cancellationToken))
+                        continue;
+
                     await _processLock.WaitAsync(cancellationToken);
                     try
                     {

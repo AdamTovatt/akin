@@ -165,11 +165,17 @@ namespace Akin.Cli
             await _context.Store.OpenAsync(cancellationToken);
 
             // Start the file watcher first so any changes during the initial
-            // reindex pass are captured and replayed after.
+            // reindex pass are captured and replayed after. The coordinator's
+            // flush and reconciliation loops skip work while globally paused, so
+            // it is safe to leave running.
             _coordinator = await IndexCoordinator.StartAsync(_context, cancellationToken);
 
             try
             {
+                // Don't even begin the initial build while paused. Once it
+                // starts, the build loop itself parks if a pause arrives, so
+                // both pause-before-start and pause-mid-build are covered.
+                await WaitWhilePausedAsync(cancellationToken);
                 await _context.EnsureIndexReadyAsync(progress: null, cancellationToken);
             }
             catch (OperationCanceledException)
@@ -179,6 +185,20 @@ namespace Akin.Cli
             catch (Exception ex)
             {
                 Console.Error.WriteLine($"[akin] initial index build failed: {ex.Message}");
+            }
+        }
+
+        private async Task WaitWhilePausedAsync(CancellationToken cancellationToken)
+        {
+            bool loggedPause = false;
+            while (await _context.GlobalState.IsPausedAsync(cancellationToken))
+            {
+                if (!loggedPause)
+                {
+                    Console.Error.WriteLine("[akin] indexing globally paused; waiting to resume before initial index build");
+                    loggedPause = true;
+                }
+                await Task.Delay(GlobalStateWatcher.PollInterval, cancellationToken);
             }
         }
     }

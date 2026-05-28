@@ -31,9 +31,10 @@ namespace Akin.Core.Commands
             _config = config;
         }
 
-        public Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
+        public async Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
         {
             IndexStatus status = _store.GetStatus();
+            GlobalState globalState = await GlobalState.LoadAsync(cancellationToken);
 
             StringBuilder details = new StringBuilder();
             details.Append("Repo root:        ").AppendLine(_repoRoot);
@@ -42,6 +43,7 @@ namespace Akin.Core.Commands
             details.Append("Files:            ").AppendLine(status.FileCount.ToString());
             details.Append("Chunks:           ").AppendLine(status.ChunkCount.ToString());
             details.Append("Compatible:       ").AppendLine(_compatible ? "yes" : "no (rebuild recommended)");
+            details.Append("Indexing:         ").AppendLine(globalState.IndexingPaused ? "paused (run `akin resume`)" : "active");
 
             if (status.Manifest != null)
             {
@@ -54,7 +56,7 @@ namespace Akin.Core.Commands
             details.Append("ONNX threads:     ").AppendLine(_config.DerivedIntraOpNumThreads.ToString());
 
             string message = status.IsReady ? "Index ready." : "Index not built yet.";
-            return Task.FromResult(new CommandResult(true, message, details.ToString().TrimEnd()));
+            return new CommandResult(true, message, details.ToString().TrimEnd());
         }
     }
 }

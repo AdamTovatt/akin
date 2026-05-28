@@ -18,6 +18,9 @@ Usage:
   akin reindex                    Force a full reindex
   akin config                     Show current configuration
   akin config --set <key> <val>   Update a config setting
+  akin pause                      Pause background indexing in all running
+                                  MCP servers for this user (e.g. on battery)
+  akin resume                     Resume background indexing
   akin --mcp                      Run as MCP server
   akin --version                  Show version
   akin help                       Show this help

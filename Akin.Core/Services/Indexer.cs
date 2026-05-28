@@ -22,6 +22,7 @@ namespace Akin.Core.Services
         private readonly string _embeddingModelId;
         private readonly TimeSpan _flushInterval;
         private readonly CpuThrottle _throttle;
+        private readonly GlobalStateWatcher _globalState;
 
         public Indexer(
             IRepoScanner scanner,
@@ -31,6 +32,7 @@ namespace Akin.Core.Services
             IChunkerSelector chunkerSelector,
             string embeddingModelId,
             CpuThrottle throttle,
+            GlobalStateWatcher globalState,
             TimeSpan? flushInterval = null)
         {
             ArgumentNullException.ThrowIfNull(scanner);
@@ -40,6 +42,7 @@ namespace Akin.Core.Services
             ArgumentNullException.ThrowIfNull(chunkerSelector);
             ArgumentException.ThrowIfNullOrWhiteSpace(embeddingModelId);
             ArgumentNullException.ThrowIfNull(throttle);
+            ArgumentNullException.ThrowIfNull(globalState);
 
             _scanner = scanner;
             _fileChunker = fileChunker;
@@ -49,6 +52,7 @@ namespace Akin.Core.Services
             _embeddingModelId = embeddingModelId;
             _flushInterval = flushInterval ?? DefaultFlushInterval;
             _throttle = throttle;
+            _globalState = globalState;
         }
 
         public async Task ReindexAllAsync(IProgress<IndexProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -92,6 +96,23 @@ namespace Akin.Core.Services
                 for (int i = 0; i < files.Count; i++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+
+                    if (await _globalState.IsPausedAsync(cancellationToken))
+                    {
+                        // Indexing was paused mid-build. Persist progress so far
+                        // and park until resumed rather than burning CPU/battery
+                        // on embeddings. The manifest's empty-fingerprint marker
+                        // (stamped above) means a crash while parked is recovered
+                        // by the next startup's reconciler.
+                        await batch.DisposeAsync();
+                        do
+                        {
+                            await Task.Delay(GlobalStateWatcher.PollInterval, cancellationToken);
+                        }
+                        while (await _globalState.IsPausedAsync(cancellationToken));
+                        batch = await _store.BeginBatchAsync(cancellationToken);
+                        lastFlush = DateTime.UtcNow;
+                    }
 
                     string relativePath = files[i];
 

@@ -26,6 +26,7 @@ namespace Akin.Core.Services
         public IIndexer Indexer { get; }
         public ISearchService SearchService { get; }
         public IndexReconciler Reconciler { get; }
+        public GlobalStateWatcher GlobalState { get; }
 
         private readonly CpuThrottle _throttle;
 
@@ -40,7 +41,8 @@ namespace Akin.Core.Services
             IIndexStore store,
             IIndexer indexer,
             ISearchService searchService,
-            IndexReconciler reconciler)
+            IndexReconciler reconciler,
+            GlobalStateWatcher globalState)
         {
             RepoRoot = repoRoot;
             IndexFolder = indexFolder;
@@ -53,6 +55,7 @@ namespace Akin.Core.Services
             Indexer = indexer;
             SearchService = searchService;
             Reconciler = reconciler;
+            GlobalState = globalState;
         }
 
         /// <summary>
@@ -92,8 +95,9 @@ namespace Akin.Core.Services
                 await store.OpenAsync(cancellationToken);
 
                 throttle = new CpuThrottle(config.MaxCpuPercent);
+                GlobalStateWatcher globalState = new GlobalStateWatcher();
                 FileChunker fileChunker = new FileChunker(repoRoot, chunkerSelector);
-                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle);
+                IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle, globalState);
                 ISearchService searchService = new SearchService(embedder, store, chunkerSelector);
                 IndexReconciler reconciler = new IndexReconciler(repoRoot, scanner, store, indexer);
 
@@ -108,7 +112,8 @@ namespace Akin.Core.Services
                     store,
                     indexer,
                     searchService,
-                    reconciler);
+                    reconciler,
+                    globalState);
             }
             catch
             {

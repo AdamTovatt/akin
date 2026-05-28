@@ -36,6 +36,8 @@ namespace Akin.Core.Commands
                 "status" => CreateStatus(),
                 "reindex" => CreateReindex(),
                 "config" => BuildConfigFromArgs(args),
+                "pause" => new PauseCommand(),
+                "resume" => new ResumeCommand(),
                 "help" or "--help" or "-h" => new HelpCommand(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'. Run 'akin help' for usage."),
             };

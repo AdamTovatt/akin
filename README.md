@@ -67,10 +67,18 @@ For Cursor or other MCP clients, add to your MCP configuration:
 akin search <query> [--max N] [--snippets] [--max-per-file N]   # Semantic search
 akin status                                                     # Show index status
 akin reindex                                                    # Force a full reindex
+akin pause                                                      # Pause indexing in all running MCP servers
+akin resume                                                     # Resume indexing
 akin --mcp                                                      # Run as MCP server
 akin --version                                                  # Show version
 akin help                                                       # Show help
 ```
+
+### Pausing indexing
+
+`akin pause` flips a machine-wide switch that every running `akin` MCP server for the current user observes within a few seconds, stopping all background indexing (incremental reindexes, periodic reconciliation, and any in-progress initial build). Searches keep working from whatever is already on disk. `akin resume` flips it back; servers catch up on changes made while paused.
+
+The switch lives in `~/.akin/state.json` (a user-level file, distinct from the per-repository `.akin/` index folders). It is useful when several MCP servers are indexing different repositories and you want to stop the CPU/battery cost — for example when unplugging a laptop.
 
 ### Examples
 
@@ -126,6 +134,8 @@ Files are chunked using the predefined VectorSharp.Chunking format for their ext
 ### Incremental updates (MCP mode)
 
 When running as an MCP server, Akin watches the repository for file changes via `FileSystemWatcher` and debounces events into batched incremental reindexes. A periodic reconciliation every five minutes diffs the current tracked set against the index to catch events the watcher may have dropped, as well as files that have become gitignored or newly tracked.
+
+All of this background work honours the global pause switch described under [Pausing indexing](#pausing-indexing): while paused, watcher events are queued but not processed, reconciliation ticks are skipped, and an in-progress initial build parks until you resume.
 
 In CLI mode (short-lived invocations), no watcher is used — each invocation opens the existing index, runs the command, and exits.
 
