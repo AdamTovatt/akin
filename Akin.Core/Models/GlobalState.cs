@@ -9,9 +9,10 @@ namespace Akin.Core.Models
     /// (e.g. <c>~/.akin/state.json</c> on Linux/macOS) so the CLI can flip a
     /// flag that all long-running MCP servers observe on their next poll.
     ///
-    /// Today this just controls a global pause for background indexing. The
-    /// MCP servers continue to serve searches from whatever is already on
-    /// disk while paused — only the embedding work stops.
+    /// Today this controls a global manual pause for background indexing and
+    /// an opt-out flag for the automatic pause-on-battery behaviour. The MCP
+    /// servers continue to serve searches from whatever is already on disk
+    /// while paused — only the embedding work stops.
     /// </summary>
     public sealed record GlobalState
     {
@@ -28,6 +29,17 @@ namespace Akin.Core.Models
         /// is false (indexing active).
         /// </summary>
         public bool IndexingPaused { get; init; }
+
+        /// <summary>
+        /// When true (the default), background indexing automatically pauses
+        /// while the machine is on battery power and resumes when plugged back
+        /// in. Currently only detected on macOS via IOKit; on other platforms
+        /// the power source is treated as AC, so this flag is effectively a
+        /// no-op. The manual <see cref="IndexingPaused"/> override always wins:
+        /// if a user explicitly ran <c>akin pause</c>, indexing stays paused
+        /// regardless of power state.
+        /// </summary>
+        public bool AutoPauseOnBattery { get; init; } = true;
 
         /// <summary>
         /// The folder that holds machine-wide akin state for the current user

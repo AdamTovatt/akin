@@ -69,6 +69,7 @@ akin status                                                     # Show index sta
 akin reindex                                                    # Force a full reindex
 akin pause                                                      # Pause indexing in all running MCP servers
 akin resume                                                     # Resume indexing
+akin auto-pause on|off                                          # Toggle pause-on-battery (default on, macOS)
 akin --mcp                                                      # Run as MCP server
 akin --version                                                  # Show version
 akin help                                                       # Show help
@@ -79,6 +80,21 @@ akin help                                                       # Show help
 `akin pause` flips a machine-wide switch that every running `akin` MCP server for the current user observes within a few seconds, stopping all background indexing (incremental reindexes, periodic reconciliation, and any in-progress initial build). Searches keep working from whatever is already on disk. `akin resume` flips it back; servers catch up on changes made while paused.
 
 The switch lives in `~/.akin/state.json` (a user-level file, distinct from the per-repository `.akin/` index folders). It is useful when several MCP servers are indexing different repositories and you want to stop the CPU/battery cost — for example when unplugging a laptop.
+
+### Auto-pause on battery
+
+By default, Akin also pauses indexing automatically whenever the machine is on battery power and resumes it when plugged back in, so the CPU cost of indexing several repositories doesn't quietly drain a laptop. The check piggybacks on the same poll cadence as the manual pause switch, so a plug/unplug is observed within a few seconds.
+
+Detection is currently macOS-only (via IOKit's `IOPSGetProvidingPowerSourceType`). On Linux and Windows the power source is treated as AC, so auto-pause is a silent no-op there until detection is added.
+
+To opt out and keep indexing active regardless of power source:
+
+```bash
+akin auto-pause off
+akin auto-pause on    # restore the default
+```
+
+Manual `akin pause` always wins: if you've manually paused, plugging in does not auto-resume. Run `akin resume` to clear the manual pause.
 
 ### Examples
 

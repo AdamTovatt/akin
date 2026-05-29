@@ -38,6 +38,7 @@ namespace Akin.Core.Commands
                 "config" => BuildConfigFromArgs(args),
                 "pause" => new PauseCommand(GlobalState.DefaultStateFolder),
                 "resume" => new ResumeCommand(GlobalState.DefaultStateFolder),
+                "auto-pause" => BuildAutoPauseFromArgs(args),
                 "help" or "--help" or "-h" => new HelpCommand(),
                 _ => throw new ArgumentException($"Unknown command '{args[0]}'. Run 'akin help' for usage."),
             };
@@ -134,6 +135,20 @@ namespace Akin.Core.Commands
                 IncludeKinds = includeKinds,
             };
             return new SearchCommand(_context.SearchService, _context.EnsureIndexReadyAsync, query, options, _progress);
+        }
+
+        private static AutoPauseCommand BuildAutoPauseFromArgs(string[] args)
+        {
+            if (args.Length != 2)
+                throw new ArgumentException("auto-pause requires 'on' or 'off'. Usage: akin auto-pause on|off");
+
+            string value = args[1].ToLowerInvariant();
+            return value switch
+            {
+                "on" => new AutoPauseCommand(GlobalState.DefaultStateFolder, enable: true),
+                "off" => new AutoPauseCommand(GlobalState.DefaultStateFolder, enable: false),
+                _ => throw new ArgumentException($"auto-pause requires 'on' or 'off' (got '{args[1]}'). Usage: akin auto-pause on|off"),
+            };
         }
 
         private ConfigCommand BuildConfigFromArgs(string[] args)
