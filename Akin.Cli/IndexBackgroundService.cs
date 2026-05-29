@@ -144,11 +144,14 @@ namespace Akin.Cli
                 Directory.CreateDirectory(_context.IndexFolder);
 
                 string lockPath = Path.Combine(_context.IndexFolder, ".lock");
+                // FileShare.Read still blocks any other process opening
+                // ReadWrite (the only mode that wins the lock) but lets a
+                // human or diagnostic tool peek at the file without bouncing.
                 _lockStream = new FileStream(
                     lockPath,
                     FileMode.OpenOrCreate,
                     FileAccess.ReadWrite,
-                    FileShare.None);
+                    FileShare.Read);
 
                 return true;
             }
