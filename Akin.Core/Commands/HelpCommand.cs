@@ -19,8 +19,11 @@ Usage:
   akin config                     Show current configuration
   akin config --set <key> <val>   Update a config setting
   akin pause                      Pause background indexing in all running
-                                  MCP servers for this user (e.g. on battery)
+                                  MCP servers for this user (manual override)
   akin resume                     Resume background indexing
+  akin auto-pause on|off          Control automatic pause when the machine is
+                                  on battery power (default on, macOS-only
+                                  detection — no-op on other platforms)
   akin --mcp                      Run as MCP server
   akin --version                  Show version
   akin help                       Show this help

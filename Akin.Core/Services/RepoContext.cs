@@ -95,7 +95,16 @@ namespace Akin.Core.Services
                 await store.OpenAsync(cancellationToken);
 
                 throttle = new CpuThrottle(config.MaxCpuPercent);
-                GlobalStateWatcher globalStateWatcher = new GlobalStateWatcher();
+                // Auto-pause-on-battery only works where we have a native
+                // power source provider. macOS uses IOKit; any other platform
+                // falls back to the "always on AC" stub so the rest of the
+                // pause logic is identical everywhere.
+                IPowerSourceProvider powerSource = OperatingSystem.IsMacOS()
+                    ? new MacOsPowerSourceProvider()
+                    : new UnknownPowerSourceProvider();
+                GlobalStateWatcher globalStateWatcher = new GlobalStateWatcher(
+                    GlobalState.DefaultStateFolder,
+                    powerSource);
                 FileChunker fileChunker = new FileChunker(repoRoot, chunkerSelector);
                 IIndexer indexer = new Indexer(scanner, fileChunker, store, embedder, chunkerSelector, EmbeddingModelId, throttle, globalStateWatcher);
                 ISearchService searchService = new SearchService(embedder, store, chunkerSelector);

@@ -37,7 +37,7 @@ namespace Akin.Core.Commands
         public async Task<CommandResult> ExecuteAsync(CancellationToken cancellationToken)
         {
             IndexStatus status = _store.GetStatus();
-            bool indexingPaused = await _globalState.IsPausedAsync(cancellationToken);
+            PauseState pauseState = await _globalState.GetPauseStateAsync(cancellationToken);
 
             StringBuilder details = new StringBuilder();
             details.Append("Repo root:        ").AppendLine(_repoRoot);
@@ -46,7 +46,8 @@ namespace Akin.Core.Commands
             details.Append("Files:            ").AppendLine(status.FileCount.ToString());
             details.Append("Chunks:           ").AppendLine(status.ChunkCount.ToString());
             details.Append("Compatible:       ").AppendLine(_compatible ? "yes" : "no (rebuild recommended)");
-            details.Append("Indexing:         ").AppendLine(indexingPaused ? "paused (run `akin resume`)" : "active");
+            details.Append("Indexing:         ").AppendLine(FormatIndexingLine(pauseState));
+            details.Append("Auto-pause:       ").AppendLine(FormatAutoPauseLine(pauseState));
 
             if (status.Manifest != null)
             {
@@ -60,6 +61,24 @@ namespace Akin.Core.Commands
 
             string message = status.IsReady ? "Index ready." : "Index not built yet.";
             return new CommandResult(true, message, details.ToString().TrimEnd());
+        }
+
+        private static string FormatIndexingLine(PauseState state)
+        {
+            if (state.ManuallyPaused)
+                return "paused (manual — run `akin resume`)";
+
+            if (state.AutoPauseEnabled && state.OnBattery)
+                return "paused (on battery — plug in to resume, or run `akin auto-pause off`)";
+
+            return "active";
+        }
+
+        private static string FormatAutoPauseLine(PauseState state)
+        {
+            string mode = state.AutoPauseEnabled ? "on" : "off";
+            string powerSource = state.OnBattery ? "battery" : "AC power";
+            return $"{mode} (currently on {powerSource})";
         }
     }
 }

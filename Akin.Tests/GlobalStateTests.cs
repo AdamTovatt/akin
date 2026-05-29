@@ -26,6 +26,31 @@ namespace Akin.Tests
         }
 
         [Fact]
+        public async Task LoadAsync_MissingFolder_ReturnsAutoPauseEnabledByDefault()
+        {
+            GlobalState state = await GlobalState.LoadAsync(_stateFolder);
+
+            Assert.True(state.AutoPauseOnBattery);
+        }
+
+        [Fact]
+        public async Task LoadAsync_LegacyStateJsonWithoutAutoPauseField_DefaultsAutoPauseOn()
+        {
+            // Pre-0.6 state.json files only contain indexingPaused. Loading
+            // them must surface auto-pause as enabled so existing users opt
+            // into the new default without editing their state file.
+            Directory.CreateDirectory(_stateFolder);
+            await File.WriteAllTextAsync(
+                Path.Combine(_stateFolder, "state.json"),
+                "{ \"indexingPaused\": false }");
+
+            GlobalState state = await GlobalState.LoadAsync(_stateFolder);
+
+            Assert.False(state.IndexingPaused);
+            Assert.True(state.AutoPauseOnBattery);
+        }
+
+        [Fact]
         public async Task SaveThenLoad_RoundTripsPausedFlag()
         {
             await new GlobalState { IndexingPaused = true }.SaveAsync(_stateFolder);
@@ -33,6 +58,16 @@ namespace Akin.Tests
 
             await new GlobalState { IndexingPaused = false }.SaveAsync(_stateFolder);
             Assert.False((await GlobalState.LoadAsync(_stateFolder)).IndexingPaused);
+        }
+
+        [Fact]
+        public async Task SaveThenLoad_RoundTripsAutoPauseFlag()
+        {
+            await new GlobalState { AutoPauseOnBattery = false }.SaveAsync(_stateFolder);
+            Assert.False((await GlobalState.LoadAsync(_stateFolder)).AutoPauseOnBattery);
+
+            await new GlobalState { AutoPauseOnBattery = true }.SaveAsync(_stateFolder);
+            Assert.True((await GlobalState.LoadAsync(_stateFolder)).AutoPauseOnBattery);
         }
 
         [Fact]
